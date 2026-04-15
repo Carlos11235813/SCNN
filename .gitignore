@@ -209,3 +209,6 @@ __marimo__/
 # DataSpell
 .venv/
 .idea/
+
+# dataset
+src/data/
