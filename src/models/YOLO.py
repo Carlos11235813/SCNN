@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import torch
 
 @dataclass
-class YOLO:
+class Yolo:
     boxes: torch.Tensor
     labels: torch.Tensor
 
