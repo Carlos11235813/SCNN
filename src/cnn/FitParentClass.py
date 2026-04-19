@@ -34,6 +34,34 @@ class FitParentClass(nn.Module):
             targets[idx, cord_y, cord_x, 1:5] = boxes
             targets[idx, cord_y, cord_x, 5:] = torch.eye(10)[labels]
         return targets
+    
+    @staticmethod
+    def compute_iou(boxes1: torch.Tensor, boxes2: torch.Tensor, eps=1e-6):
+        x1_1 = boxes1[:, 0] - boxes1[:, 2] / 2
+        y1_1 = boxes1[:, 1] - boxes1[:, 3] / 2
+        x2_1 = boxes1[:, 0] + boxes1[:, 2] / 2
+        y2_1 = boxes1[:, 1] + boxes1[:, 3] / 2
+
+        x1_2 = boxes2[:, 0] - boxes2[:, 2] / 2
+        y1_2 = boxes2[:, 1] - boxes2[:, 3] / 2
+        x2_2 = boxes2[:, 0] + boxes2[:, 2] / 2
+        y2_2 = boxes2[:, 1] + boxes2[:, 3] / 2
+
+        x1 = torch.max(x1_1, x1_2)
+        y1 = torch.max(y1_1, y1_2)
+        x2 = torch.min(x2_1, x2_2)
+        y2 = torch.min(y2_1, y2_2)
+
+        inter = (x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0)
+
+        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+
+        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+
+        union = area1 + area2 - inter + eps
+
+        return inter / union
+
 
     @staticmethod
     def compute_loss(outputs: torch.Tensor, targets: torch.Tensor) -> tuple[Any, Any, Any]:
