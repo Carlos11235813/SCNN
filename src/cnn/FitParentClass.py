@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 from torch import nn
 import wandb
@@ -34,7 +36,7 @@ class FitParentClass(nn.Module):
         return targets
 
     @staticmethod
-    def compute_loss(outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def compute_loss(outputs: torch.Tensor, targets: torch.Tensor) -> tuple[Any, Any, Any]:
         objectness_out = outputs[:, :, :, 0]
         objectness_tar = targets[:, :, :, 0]
 
@@ -55,14 +57,18 @@ class FitParentClass(nn.Module):
         criterion_classification = nn.BCEWithLogitsLoss()
         loss_classification = criterion_classification(classify_out, classify_tar)
 
-        return loss_objectness + loss_localization + loss_classification
+        return loss_objectness, loss_localization, loss_classification
 
     def _it_over_dataloader(self,
                             dataloader: torch.utils.data.DataLoader,
                             optimizer: torch.optim.Optimizer,
                             device: torch.device) -> float:
         total_loss = 0
+        total_objectness = 0
+        total_localization = 0
+        total_classification = 0
         for images, yolo in dataloader:
+            images = images.to(device)
             optimizer.zero_grad()
 
             outputs = self(images)
@@ -74,13 +80,25 @@ class FitParentClass(nn.Module):
                                           device=device)
 
 
-            loss = self.compute_loss(outputs=outputs,
+            loss_objectness, loss_localization, loss_classification = self.compute_loss(outputs=outputs,
                                      targets=targets)
+
+            total_objectness += loss_objectness.item()
+            total_localization += loss_localization.item()
+            total_classification += loss_classification.item()
+
+            loss = loss_objectness + loss_localization + loss_classification
 
             loss.backward()
             optimizer.step()
 
             total_loss += loss.item()
+
+        wandb.log({"Training Loss Objectness": total_objectness,
+                   "Training Loss Localization": total_localization,
+                   "Training Loss Classification": total_classification,
+                   "Training Total Loss": total_loss})
+
 
         return total_loss
 
@@ -88,9 +106,12 @@ class FitParentClass(nn.Module):
                   validation_dataloader: torch.utils.data.DataLoader,
                   device: torch.device) -> float:
         total_loss = 0
+        total_objectness = 0
+        total_localization = 0
+        total_classification = 0
         with torch.no_grad():
             for images, yolo in validation_dataloader:
-
+                images = images.to(device)
                 outputs = self(images)
 
                 targets = self._build_targets(yolo,
@@ -99,9 +120,19 @@ class FitParentClass(nn.Module):
                                               num_classes=10,
                                               device=device
                                               )
-                loss = self.compute_loss(outputs=outputs,
-                                         targets=targets)
+                loss_objectness, loss_localization, loss_classification = self.compute_loss(outputs=outputs,
+                                                                                            targets=targets)
+                total_objectness += loss_objectness.item()
+                total_localization += loss_localization.item()
+                total_classification += loss_classification.item()
+
+                loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
+        wandb.log({"Val Loss Objectness": total_objectness,
+                   "Val Loss Localization": total_localization,
+                   "Val Loss Classification": total_classification,
+                   "Validation Total Loss": total_loss})
+
         return total_loss
 
     def fit(self,
@@ -122,11 +153,12 @@ class FitParentClass(nn.Module):
                                                    optimizer=optimizer,
                                                    device=device)
 
-            print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {loss / len(train_loader)}")
+            print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss / len(train_loader)}")
             if val_loader is not None:
                 self.eval()
                 val_loss = self._validate(validation_dataloader=val_loader,
                                           device=device)
+
                 print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss / len(val_loader)}")
 
 
