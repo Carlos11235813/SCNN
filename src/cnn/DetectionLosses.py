@@ -6,7 +6,8 @@ class DetectionLosses:
 
     @staticmethod
     def compute_basic_loss(outputs: torch.Tensor,
-                           targets: torch.Tensor) -> tuple[Any, Any, Any]:
+                           targets: torch.Tensor,
+                           loc_loss_iou: bool=False) -> tuple[Any, Any, Any]:
         objectness_out = outputs[:, :, :, 0]
         objectness_tar = targets[:, :, :, 0]
 
@@ -18,8 +19,15 @@ class DetectionLosses:
         localization_out = outputs[obj_mask][:, 1:5]
         localization_tar = targets[obj_mask][:, 1:5]
 
-        criterion_localization = nn.MSELoss()
-        loss_localization = criterion_localization(localization_out, localization_tar)
+        if loc_loss_iou:
+            if localization_out.numel() == 0:
+                loss_localization = torch.tensor(0.0)
+            else:
+                iou = DetectionLosses().compute_iou(localization_out, localization_tar)
+                loss_localization = 1 - iou.mean()
+        else:
+            criterion_localization = nn.MSELoss()
+            loss_localization = criterion_localization(localization_out, localization_tar)
 
         classify_out = outputs[obj_mask][:, 5:]
         classify_tar = targets[obj_mask][:, 5:]
