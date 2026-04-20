@@ -13,7 +13,7 @@ class FitParentClass(nn.Module):
                        grid_h: int,
                        grid_w: int,
                        num_classes: int,
-                       device: torch.device):
+                       device: torch.device) -> torch.Tensor:
         """
         Transforms batch of Yolo outputs into target boxes.
         That are compatible with models output.
@@ -57,7 +57,9 @@ class FitParentClass(nn.Module):
         return torch.tensor(anchors, dtype=torch.float32) 
 
     @staticmethod
-    def non_maximum_suppression(boxes, scores, iou_threshold=0.5):
+    def non_maximum_suppression(boxes: torch.Tensor,
+                                scores: torch.Tensor,
+                                iou_threshold: float=0.5) -> torch.Tensor:
         indices=torch.argsort(scores, descending=True)
         keep=[]
         while indices.numel() > 0:
