@@ -4,9 +4,9 @@ import torch.nn as nn
 class VisDroneCNN(nn.Module):
     def __init__(self, S: int = 8, B_boxes: int = 1, C: int = 10):
         """
-        S: rozmiar siatki (grid size)
-        B_boxes: liczba ramek na jedną komórkę (zazwyczaj 1 w prostym modelu)
-        C: liczba klas (tu 10)
+        S: grid size
+        B_boxes: number of bounding boxes per grid cell (most models only use 1)
+        C: number of classes (here 10)
         """
         super(VisDroneCNN, self).__init__()
         self.S = S
@@ -15,7 +15,7 @@ class VisDroneCNN(nn.Module):
         
         self.output_dim = self.B_boxes * 5 + self.C
 
-        # Ekstrakcja cech (Backbone)
+        # Feature Extractor (Backbone)
         self.backbone = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
@@ -33,7 +33,7 @@ class VisDroneCNN(nn.Module):
             nn.MaxPool2d(2, 2)
         )
 
-        # Głowica detekcyjna (Detection Head)
+        # Detection Head
         self.detection_head = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
             nn.LeakyReLU(0.1),
@@ -44,7 +44,7 @@ class VisDroneCNN(nn.Module):
         x = self.backbone(x)
         x = self.detection_head(x)
         
-        # Zmieniamy kolejność wymiarów, aby pasowała do [B, S, S, 15]
+        # Changing dimensions to fit [B, S, S, 15]
         x = x.permute(0, 2, 3, 1) 
         
         return x
