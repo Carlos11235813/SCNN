@@ -14,6 +14,17 @@ class FitParentClass(nn.Module):
                        grid_w: int,
                        num_classes: int,
                        device: torch.device):
+        """
+        Transforms batch of Yolo outputs into target boxes.
+        That are compatible with models output.
+
+        :param yolo_batch: Batch of Yolo outputs
+        :param grid_h: Height of the grid
+        :param grid_w: Width of the grid
+        :param num_classes: Number of classes in classification part of network
+        :param device: Specifies the device to run on
+        :return: Tensor of target boxes, shape: (batch_size, grid_h, grid_w, 5 + num_classes)
+        """
         batch_size = len(yolo_batch)
         targets = torch.zeros(batch_size,
                               grid_h,
@@ -67,6 +78,16 @@ class FitParentClass(nn.Module):
                             dataloader: torch.utils.data.DataLoader,
                             optimizer: torch.optim.Optimizer,
                             device: torch.device) -> float:
+        """
+        Iterate once trough dataloader, and updates the weights in the model.
+        It logs data to wandb.
+
+        :param dataloader: DataLoader to iterate on
+        :param optimizer: Optimizer used in training
+        :param device: Specifies the device to run on
+        :return: It returns the total loss on Dataloader.
+        total loss == localization_loss + classify_loss + objectness_loss
+        """
         total_loss = 0
         total_objectness = 0
         total_localization = 0
@@ -109,6 +130,16 @@ class FitParentClass(nn.Module):
     def _validate(self,
                   validation_dataloader: torch.utils.data.DataLoader,
                   device: torch.device) -> float:
+        """
+        Iterate once trough validation_dataloader, does not update the weights in the model.
+        It mesures models performance on validation_dataloader.
+        It logs data to wandb.
+
+        :param validation_dataloader: DataLoader to iterate on
+        :param device: Specifies the device to run on
+        :return: It returns the total loss on Dataloader.
+        total loss == localization_loss + classify_loss + objectness_loss
+        """
         total_loss = 0
         total_objectness = 0
         total_localization = 0
@@ -144,11 +175,23 @@ class FitParentClass(nn.Module):
             epochs: int,
             optimizer: torch.optim.Optimizer,
             train_loader: torch.utils.data.DataLoader,
-            wand_config = None,
+            wandb_config = None,
             val_loader: torch.utils.data.DataLoader = None) -> None:
+        """
+        Training loop that works for specified number of epochs.
+        It validates model on validation dataloader, if it is specified.
+
+
+        :param epochs: Specifies the number of epochs to run
+        :param optimizer: Specifies the optimizer to use
+        :param train_loader: Specifies the dataloader to iterate on in training mode
+        :param wandb_config: Specifies the wandb configuration
+        :param val_loader: Specifies the dataloader to iterate on in validation mode
+        :return: None
+        """
         wandb.init(
             project="SCNN",
-            config=wand_config
+            config=wandb_config
         )
         device = next(self.parameters()).device
 
