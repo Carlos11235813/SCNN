@@ -36,7 +36,7 @@ class FitParentClass(nn.Module):
             
             remaining_boxes=boxes[indices[1:]]
             current_box = boxes[current].unsqueeze(0).repeat(len(remaining_boxes), 1)
-            iou = DetectionLosses().compute_iou(current_box, remaining_boxes)
+            iou = DetectionLosses.compute_iou(current_box, remaining_boxes)
             indices= indices[1:][iou < iou_threshold]
         
         return torch.tensor(keep, dtype=torch.long)
@@ -72,8 +72,9 @@ class FitParentClass(nn.Module):
                                           device=device)
 
 
-            loss_objectness, loss_localization, loss_classification = DetectionLosses().compute_basic_loss(outputs=outputs,
-                                     targets=targets)
+            loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
+                                                                                                        outputs=outputs,
+                                                                                                        targets=targets)
 
             total_objectness += loss_objectness.item()
             total_localization += loss_localization.item()
@@ -122,7 +123,7 @@ class FitParentClass(nn.Module):
                                               num_classes=10,
                                               device=device
                                               )
-                loss_objectness, loss_localization, loss_classification = DetectionLosses().compute_basic_loss(
+                loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                             outputs=outputs,
                                                                                             targets=targets)
                 total_objectness += loss_objectness.item()
