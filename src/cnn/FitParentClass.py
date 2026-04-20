@@ -2,47 +2,12 @@ import torch
 from torch import nn
 import wandb
 
+from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
 
 class FitParentClass(nn.Module):
     def __init__(self):
         super(FitParentClass, self).__init__()
-
-    @staticmethod
-    def _build_targets(yolo_batch: torch.Tensor,
-                       grid_h: int,
-                       grid_w: int,
-                       num_classes: int,
-                       device: torch.device) -> torch.Tensor:
-        """
-        Transforms batch of Yolo outputs into target boxes.
-        That are compatible with models output.
-
-        :param yolo_batch: Batch of Yolo outputs
-        :param grid_h: Height of the grid
-        :param grid_w: Width of the grid
-        :param num_classes: Number of classes in classification part of network
-        :param device: Specifies the device to run on
-        :return: Tensor of target boxes, shape: (batch_size, grid_h, grid_w, 5 + num_classes)
-        """
-        batch_size = len(yolo_batch)
-        targets = torch.zeros(batch_size,
-                              grid_h,
-                              grid_w,
-                              5 + num_classes,
-                              device=device)
-        for idx, yolo in enumerate(yolo_batch):
-            boxes = yolo.boxes.to(device)
-            labels = yolo.labels.to(device)
-
-            cord_x = (boxes[:, 0] * grid_w).long()
-            cord_y = (boxes[:, 1] * grid_h).long()
-
-            targets[idx, cord_y, cord_x, 0] = 1.0
-
-            targets[idx, cord_y, cord_x, 1:5] = boxes
-            targets[idx, cord_y, cord_x, 5:] = torch.eye(10)[labels]
-        return targets
     
     @staticmethod
     def generate_anchors(base_size: float=1.0,
@@ -100,7 +65,7 @@ class FitParentClass(nn.Module):
 
             outputs = self(images)
 
-            targets = self._build_targets(yolo,
+            targets = BuildTargets().build_targets(yolo,
                                           grid_h=outputs.size(1),
                                           grid_w=outputs.size(2),
                                           num_classes=10,
@@ -151,7 +116,7 @@ class FitParentClass(nn.Module):
                 images = images.to(device)
                 outputs = self(images)
 
-                targets = self._build_targets(yolo,
+                targets = BuildTargets().build_targets(yolo,
                                               grid_h=outputs.size(1),
                                               grid_w=outputs.size(2),
                                               num_classes=10,
