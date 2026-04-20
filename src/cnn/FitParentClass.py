@@ -1,10 +1,8 @@
-from typing import Any
-
 import torch
 from torch import nn
 import wandb
 
-
+from src.cnn.DetectionLosses import DetectionLosses
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -36,7 +34,9 @@ class FitParentClass(nn.Module):
         return targets
     
     @staticmethod
-    def generate_anchors(base_size=1.0, scales=[0.03, 0.06, 0.09], aspect_ratio=[0.75, 1.0, 1.25]):
+    def generate_anchors(base_size: float=1.0,
+                         scales: list[float]=[0.03, 0.06, 0.09],
+                         aspect_ratio: list[float]=[0.75, 1.0, 1.25]) -> torch.Tensor:
         anchors=[]
         for scale in scales:
             for ratio in aspect_ratio:
@@ -45,33 +45,6 @@ class FitParentClass(nn.Module):
                 anchors.append([w, h])
         return torch.tensor(anchors, dtype=torch.float32) 
 
-    @staticmethod
-    def compute_iou(boxes1: torch.Tensor, boxes2: torch.Tensor, eps=1e-6):
-        x1_1 = boxes1[:, 0] - boxes1[:, 2] / 2
-        y1_1 = boxes1[:, 1] - boxes1[:, 3] / 2
-        x2_1 = boxes1[:, 0] + boxes1[:, 2] / 2
-        y2_1 = boxes1[:, 1] + boxes1[:, 3] / 2
-
-        x1_2 = boxes2[:, 0] - boxes2[:, 2] / 2
-        y1_2 = boxes2[:, 1] - boxes2[:, 3] / 2
-        x2_2 = boxes2[:, 0] + boxes2[:, 2] / 2
-        y2_2 = boxes2[:, 1] + boxes2[:, 3] / 2
-
-        x1 = torch.max(x1_1, x1_2)
-        y1 = torch.max(y1_1, y1_2)
-        x2 = torch.min(x2_1, x2_2)
-        y2 = torch.min(y2_1, y2_2)
-
-        inter = (x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0)
-
-        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-
-        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-
-        union = area1 + area2 - inter + eps
-
-        return inter / union
-    
     @staticmethod
     def non_maximum_suppression(boxes, scores, iou_threshold=0.5):
         indices=torch.argsort(scores, descending=True)
@@ -85,38 +58,10 @@ class FitParentClass(nn.Module):
             
             remaining_boxes=boxes[indices[1:]]
             current_box = boxes[current].unsqueeze(0).repeat(len(remaining_boxes), 1)
-            iou = FitParentClass.compute_iou(current_box, remaining_boxes)
+            iou = DetectionLosses().compute_iou(current_box, remaining_boxes)
             indices= indices[1:][iou < iou_threshold]
         
         return torch.tensor(keep, dtype=torch.long)
-
-
-    @staticmethod
-    def compute_loss(outputs: torch.Tensor, targets: torch.Tensor) -> tuple[Any, Any, Any]:
-        objectness_out = outputs[:, :, :, 0]
-        objectness_tar = targets[:, :, :, 0]
-
-        criterion_objectness = nn.BCEWithLogitsLoss()
-        loss_objectness = criterion_objectness(objectness_out, objectness_tar)
-
-        obj_mask = targets[:, :, :, 0] == 1
-
-        localization_out = outputs[obj_mask][:, 1:5]
-        localization_tar = targets[obj_mask][:, 1:5]
-
-        if localization_out.numel() == 0:
-            loss_localization = torch.tensor(0.0)
-        else:
-            iou = FitParentClass.compute_iou(localization_out, localization_tar)
-            loss_localization = 1 - iou.mean()
-
-        classify_out = outputs[obj_mask][:, 5:]
-        classify_tar = targets[obj_mask][:, 5:]
-
-        criterion_classification = nn.BCEWithLogitsLoss()
-        loss_classification = criterion_classification(classify_out, classify_tar)
-
-        return loss_objectness, loss_localization, loss_classification
 
     def _it_over_dataloader(self,
                             dataloader: torch.utils.data.DataLoader,
@@ -139,7 +84,7 @@ class FitParentClass(nn.Module):
                                           device=device)
 
 
-            loss_objectness, loss_localization, loss_classification = self.compute_loss(outputs=outputs,
+            loss_objectness, loss_localization, loss_classification = DetectionLosses().compute_basic_loss(outputs=outputs,
                                      targets=targets)
 
             total_objectness += loss_objectness.item()
@@ -179,7 +124,8 @@ class FitParentClass(nn.Module):
                                               num_classes=10,
                                               device=device
                                               )
-                loss_objectness, loss_localization, loss_classification = self.compute_loss(outputs=outputs,
+                loss_objectness, loss_localization, loss_classification = DetectionLosses().compute_basic_loss(
+                                                                                            outputs=outputs,
                                                                                             targets=targets)
                 total_objectness += loss_objectness.item()
                 total_localization += loss_localization.item()
