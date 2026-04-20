@@ -8,6 +8,17 @@ class DetectionLosses:
     def compute_basic_loss(outputs: torch.Tensor,
                            targets: torch.Tensor,
                            loc_loss_iou: bool=False) -> tuple[Any, Any, Any]:
+        """
+        It computes the basic loss function. Both outputs and targets are expected to have the same shape.
+        Specified by FitParentClass._build_targets method. shape: (batch_size, grid_h, grid_w, 5 + num_classes)
+        Allows to decide weather to use MSE or IoU as localization loss.
+
+        :param outputs: Output of the model. Tensor of shape: (batch_size, grid_h, grid_w, 5 + num_classes).
+        :param targets: True info, that model tried to predict.
+        :param loc_loss_iou: If set True, IoU will be used for localization loss.
+        Else MSE will be used for localization loss.
+        :return: Tuple(loss_objectness, loss_localization, loss_classification)
+        """
         objectness_out = outputs[:, :, :, 0]
         objectness_tar = targets[:, :, :, 0]
 
