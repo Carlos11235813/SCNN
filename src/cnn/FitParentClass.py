@@ -37,6 +37,13 @@ class FitParentClass(nn.Module):
     
     @staticmethod
     def generate_anchors(base_size=1.0, scales=[0.03, 0.06, 0.09], aspect_ratio=[0.75, 1.0, 1.25]):
+        """
+        Generuje zestaw anchorów (ramki referencyjne) o różnych skalach i proporcjach boków.
+        Zwraca tensor PyTorch zawierający szerokość i wysokość każdego anchoru.
+        - base_size (float): bazowy rozmiar, względem którego skalowane są anchory.
+        - scales (list[float]): lista współczynników skalowania określających wielkość anchorów.
+        - aspect_ratio (list[float]): lista proporcji szerokości do wysokości anchorów.
+        """
         anchors=[]
         for scale in scales:
             for ratio in aspect_ratio:
@@ -47,6 +54,10 @@ class FitParentClass(nn.Module):
 
     @staticmethod
     def compute_iou(boxes1: torch.Tensor, boxes2: torch.Tensor, eps=1e-6):
+        """""
+        Oblicza IoU (Intersection over Union) pomiędzy odpowiadającymi sobie parami ramek.
+        Zakłada format (x_center, y_center, width, height) i zwraca tensor wartości IoU.
+        """
         x1_1 = boxes1[:, 0] - boxes1[:, 2] / 2
         y1_1 = boxes1[:, 1] - boxes1[:, 3] / 2
         x2_1 = boxes1[:, 0] + boxes1[:, 2] / 2
@@ -74,6 +85,13 @@ class FitParentClass(nn.Module):
     
     @staticmethod
     def non_maximum_suppression(boxes, scores, iou_threshold=0.5):
+        """
+        Wykonuje Non-Maximum Suppression (NMS) w celu usunięcia nakładających się ramek o niższych scorach.
+        Zwraca indeksy wybranych ramek, które najlepiej reprezentują wykryte obiekty.
+        - boxes (Tensor): tensor ramek w formacie [N, 4], gdzie każda ramka to (x1, y1, x2, y2).
+        - scores (Tensor): tensor scorów dla każdej ramki o rozmiarze [N].
+        - iou_threshold (float): próg IoU, powyżej którego ramki są uznawane za nakładające się i odrzucane.
+        """
         indices=torch.argsort(scores, descending=True)
         keep=[]
         while indices.numel() > 0:
