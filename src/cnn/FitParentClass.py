@@ -36,6 +36,16 @@ class FitParentClass(nn.Module):
         return targets
     
     @staticmethod
+    def generate_anchors(base_size=1.0, scales=[0.03, 0.06, 0.09], aspect_ratio=[0.75, 1.0, 1.25]):
+        anchors=[]
+        for scale in scales:
+            for ratio in aspect_ratio:
+                w=base_size*scale*(ratio**0.5)
+                h=base_size*scale/(ratio**0.5)
+                anchors.append([w, h])
+        return torch.tensor(anchors, dtype=torch.float32) 
+
+    @staticmethod
     def compute_iou(boxes1: torch.Tensor, boxes2: torch.Tensor, eps=1e-6):
         x1_1 = boxes1[:, 0] - boxes1[:, 2] / 2
         y1_1 = boxes1[:, 1] - boxes1[:, 3] / 2
@@ -61,6 +71,24 @@ class FitParentClass(nn.Module):
         union = area1 + area2 - inter + eps
 
         return inter / union
+    
+    @staticmethod
+    def non_maximum_suppression(boxes, scores, iou_threshold=0.5):
+        indices=torch.argsort(scores, descending=True)
+        keep=[]
+        while indices.numel() > 0:
+            current=indices[0]
+            keep.append(current)
+
+            if indices.numel() == 1:
+                break
+            
+            remaining_boxes=boxes[indices[1:]]
+            current_box = boxes[current].unsqueeze(0).repeat(len(remaining_boxes), 1)
+            iou = FitParentClass.compute_iou(current_box, remaining_boxes)
+            indices= indices[1:][iou < iou_threshold]
+        
+        return torch.tensor(keep, dtype=torch.long)
 
 
     @staticmethod
@@ -76,8 +104,11 @@ class FitParentClass(nn.Module):
         localization_out = outputs[obj_mask][:, 1:5]
         localization_tar = targets[obj_mask][:, 1:5]
 
-        criterion_localization = nn.MSELoss()
-        loss_localization = criterion_localization(localization_out, localization_tar)
+        if localization_out.numel() == 0:
+            loss_localization = torch.tensor(0.0)
+        else:
+            iou = FitParentClass.compute_iou(localization_out, localization_tar)
+            loss_localization = 1 - iou.mean()
 
         classify_out = outputs[obj_mask][:, 5:]
         classify_tar = targets[obj_mask][:, 5:]
