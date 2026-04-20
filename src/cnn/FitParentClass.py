@@ -8,43 +8,11 @@ from src.cnn.DetectionLosses import DetectionLosses
 class FitParentClass(nn.Module):
     def __init__(self):
         super(FitParentClass, self).__init__()
-    
-    @staticmethod
-    def generate_anchors(base_size: float=1.0,
-                         scales: list[float]=[0.03, 0.06, 0.09],
-                         aspect_ratio: list[float]=[0.75, 1.0, 1.25]) -> torch.Tensor:
-        anchors=[]
-        for scale in scales:
-            for ratio in aspect_ratio:
-                w=base_size*scale*(ratio**0.5)
-                h=base_size*scale/(ratio**0.5)
-                anchors.append([w, h])
-        return torch.tensor(anchors, dtype=torch.float32) 
 
-    @staticmethod
-    def non_maximum_suppression(boxes: torch.Tensor,
-                                scores: torch.Tensor,
-                                iou_threshold: float=0.5) -> torch.Tensor:
-        indices=torch.argsort(scores, descending=True)
-        keep=[]
-        while indices.numel() > 0:
-            current=indices[0]
-            keep.append(current)
-
-            if indices.numel() == 1:
-                break
-            
-            remaining_boxes=boxes[indices[1:]]
-            current_box = boxes[current].unsqueeze(0).repeat(len(remaining_boxes), 1)
-            iou = DetectionLosses.compute_iou(current_box, remaining_boxes)
-            indices= indices[1:][iou < iou_threshold]
-        
-        return torch.tensor(keep, dtype=torch.long)
-
-    def _it_over_dataloader(self,
-                            dataloader: torch.utils.data.DataLoader,
-                            optimizer: torch.optim.Optimizer,
-                            device: torch.device) -> float:
+    def _train(self,
+                dataloader: torch.utils.data.DataLoader,
+                optimizer: torch.optim.Optimizer,
+                device: torch.device) -> float:
         """
         Iterate once trough dataloader, and updates the weights in the model.
         It logs data to wandb.
@@ -165,7 +133,7 @@ class FitParentClass(nn.Module):
 
         for epoch in range(epochs):
             self.train()
-            loss = self._it_over_dataloader(dataloader=train_loader,
+            loss = self._train(dataloader=train_loader,
                                                    optimizer=optimizer,
                                                    device=device)
 
