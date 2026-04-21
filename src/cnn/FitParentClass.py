@@ -136,13 +136,13 @@ class FitParentClass(nn.Module):
                                optimizer=optimizer,
                                device=device)
 
-            print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss / len(train_loader)}")
+            print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
             if val_loader is not None:
                 self.eval()
                 val_loss = self._validate(validation_dataloader=val_loader,
                                           device=device)
 
-                print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss / len(val_loader)}")
+                print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss}")
 
 
         wandb.finish()
