@@ -4,6 +4,7 @@ import wandb
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
+from src.callbacks.EarlyStoping import EarlyStopping
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -129,7 +130,9 @@ class FitParentClass(nn.Module):
             config=wandb_config
         )
         device = next(self.parameters()).device
+        early_stopping = EarlyStopping(patience=5)
 
+        callbacks = [early_stopping]
         for epoch in range(epochs):
             self.train()
             loss = self._train(dataloader=train_loader,
@@ -141,8 +144,10 @@ class FitParentClass(nn.Module):
                 self.eval()
                 val_loss = self._validate(validation_dataloader=val_loader,
                                           device=device)
-
                 print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss}")
-
+                for callback in callbacks:
+                    callback(epoch=epoch + 1, loss=val_loss)
+                if any(getattr(cb, "stop", False) for cb in callbacks):
+                    break
 
         wandb.finish()
