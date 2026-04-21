@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
+from src.cnn.FitParentClass import FitParentClass
 
-class VisDroneCNN(nn.Module):
+
+class VisDroneCNN(nn.Module,
+                  FitParentClass):
     def __init__(self, S: int = 8, B_boxes: int = 1, C: int = 10):
         """
         S: grid size
