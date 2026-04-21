@@ -3,15 +3,17 @@ import torch
 from src.cnn.DetectionLosses import DetectionLosses
 
 
-def generate_anchors(base_size=1.0, scales=[0.03, 0.06, 0.09], aspect_ratio=[0.75, 1.0, 1.25]):
+def generate_anchors(base_size: float=1.0,
+                     scales: list[float]=[0.03, 0.06, 0.09],
+                     aspect_ratio: list[float]=[0.75, 1.0, 1.25]) -> torch.Tensor:
     """
-    Generuje zestaw anchorów (ramki referencyjne) o różnych skalach i proporcjach boków.
-    Zwraca tensor PyTorch zawierający szerokość i wysokość każdego anchoru.
+    Generates a set of anchors (reference boxes) with various scales and aspect ratios.
+    Returns a PyTorch tensor containing the width and height of each anchor.
 
-    Parametry:
-    - base_size (float): bazowy rozmiar, względem którego skalowane są anchory.
-    - scales (list[float]): lista współczynników skalowania określających wielkość anchorów.
-    - aspect_ratio (list[float]): lista proporcji szerokości do wysokości anchorów.
+    :param base_size: Base size relative to which anchors are scaled.
+    :param scales: List of scaling factors determining anchor sizes.
+    :param aspect_ratio: List of width-to-height ratios for the anchors.
+    :return: PyTorch tensor of shape (len(scales) * len(aspect_ratios), 2) containing anchor dimensions.
     """
     anchors = []
     for scale in scales:
@@ -23,15 +25,16 @@ def generate_anchors(base_size=1.0, scales=[0.03, 0.06, 0.09], aspect_ratio=[0.7
 
 
 
-def non_maximum_suppression(boxes, scores, iou_threshold=0.5):
+def non_maximum_suppression(boxes: torch.Tensor,
+                            scores: torch.Tensor, iou_threshold=0.5) -> torch.Tensor:
     """
-    Wykonuje Non-Maximum Suppression (NMS) w celu usunięcia nakładających się ramek o niższych score’ach.
-    Zwraca indeksy wybranych ramek, które najlepiej reprezentują wykryte obiekty.
+    Performs Non-Maximum Suppression (NMS) to remove overlapping boxes with lower scores.
+    Returns indices of selected boxes that best represent the detected objects.
 
-    Parametry:
-    - boxes (Tensor): tensor ramek w formacie [N, 4], gdzie każda ramka to (x1, y1, x2, y2).
-    - scores (Tensor): tensor score’ów (pewności) dla każdej ramki o rozmiarze [N].
-    - iou_threshold (float): próg IoU, powyżej którego ramki są uznawane za nakładające się i odrzucane.
+    :param boxes: Tensor of boxes in format [N, 4], where each box is (x1, y1, x2, y2).
+    :param scores: Tensor of confidence scores for each box, shape [N].
+    :param iou_threshold: IoU threshold above which boxes are considered overlapping and discarded.
+    :return: Tensor of indices corresponding to the selected boxes.
     """
     indices = torch.argsort(scores, descending=True)
     keep = []
