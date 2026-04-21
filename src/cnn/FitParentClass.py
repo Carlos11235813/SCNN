@@ -32,7 +32,7 @@ class FitParentClass(nn.Module):
 
             outputs = self(images)
 
-            targets = BuildTargets().build_targets(yolo,
+            targets = BuildTargets.build_targets(yolo,
                                           grid_h=outputs.size(1),
                                           grid_w=outputs.size(2),
                                           num_classes=10,
@@ -84,7 +84,7 @@ class FitParentClass(nn.Module):
                 images = images.to(device)
                 outputs = self(images)
 
-                targets = BuildTargets().build_targets(yolo,
+                targets = BuildTargets.build_targets(yolo,
                                               grid_h=outputs.size(1),
                                               grid_w=outputs.size(2),
                                               num_classes=10,
@@ -133,8 +133,8 @@ class FitParentClass(nn.Module):
         for epoch in range(epochs):
             self.train()
             loss = self._train(dataloader=train_loader,
-                                                   optimizer=optimizer,
-                                                   device=device)
+                               optimizer=optimizer,
+                               device=device)
 
             print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss / len(train_loader)}")
             if val_loader is not None:
