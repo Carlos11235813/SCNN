@@ -110,7 +110,7 @@ class FitParentClass(nn.Module):
             epochs: int,
             optimizer: torch.optim.Optimizer,
             train_loader: torch.utils.data.DataLoader,
-            wandb_config = None,
+            wandb_config: dict = None,
             val_loader: torch.utils.data.DataLoader = None) -> None:
         """
         Training loop that works for specified number of epochs.
