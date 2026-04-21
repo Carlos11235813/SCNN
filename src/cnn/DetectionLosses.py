@@ -34,7 +34,7 @@ class DetectionLosses:
             if localization_out.numel() == 0:
                 loss_localization = torch.tensor(0.0)
             else:
-                iou = DetectionLosses().compute_iou(localization_out, localization_tar)
+                iou = DetectionLosses.compute_iou(localization_out, localization_tar)
                 loss_localization = 1 - iou.mean()
         else:
             criterion_localization = nn.MSELoss()
