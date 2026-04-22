@@ -35,5 +35,5 @@ class BuildTargets:
             targets[idx, cord_y, cord_x, 0] = 1.0
 
             targets[idx, cord_y, cord_x, 1:5] = boxes
-            targets[idx, cord_y, cord_x, 5:] = torch.eye(10)[labels]
+            targets[idx, cord_y, cord_x, 5:] = torch.eye(10, device=device)[labels]
         return targets
