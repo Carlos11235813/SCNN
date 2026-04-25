@@ -19,10 +19,14 @@ class FitParentClass(nn.Module):
         """
         Iterate once trough dataloader, and updates the weights in the model.
         It logs data to wandb.
+        If loss_weights are user defined, they are used as is. Otherwise, weights are
+        computed automatically each batch to equalize the contribution of each loss component.
+
         :param dataloader: DataLoader to iterate on
         :param optimizer: Optimizer used in training
         :param device: Specifies the device to run on
-        :param loss_weights: Loss weights used in training.
+        :param loss_weights: Loss weights used to scale objectness, localization and classification losses.
+                             If None, weights are computed automatically via auto_weights() each batch.
         :return: It returns the total loss on Dataloader.
         total loss == localization_loss + classify_loss + objectness_loss
         """
@@ -85,11 +89,15 @@ class FitParentClass(nn.Module):
                   loss_weights: LossWeights = None) -> float:
         """
         Iterate once trough validation_dataloader, does not update the weights in the model.
-        It mesures models performance on validation_dataloader.
+        It measures models performance on validation_dataloader.
         It logs data to wandb.
+        If loss_weights are user defined, they are used as is. Otherwise, weights are
+        computed automatically each batch to equalize the contribution of each loss component.
 
         :param validation_dataloader: DataLoader to iterate on
         :param device: Specifies the device to run on
+        :param loss_weights: Loss weights used to scale objectness, localization and classification losses.
+                             If None, weights are computed automatically via auto_weights() each batch.
         :return: It returns the total loss on Dataloader.
         total loss == localization_loss + classify_loss + objectness_loss
         """
@@ -146,14 +154,15 @@ class FitParentClass(nn.Module):
         """
         Training loop that works for specified number of epochs.
         It validates model on validation dataloader, if it is specified.
-
+        If loss_weights are not provided, auto weighting is used and logged to wandb as 'auto'.
 
         :param epochs: Specifies the number of epochs to run.
         :param optimizer: Specifies the optimizer to use.
         :param train_loader: Specifies the dataloader to iterate on in training mode.
         :param wandb_config: Specifies the wandb configuration.
         :param val_loader: Specifies the dataloader to iterate on in validation mode.
-        :param loss_weights: Specifies the loss weights to use.
+        :param loss_weights: Loss weights used to scale objectness, localization and classification losses.
+                             If None, weights are computed automatically via auto_weights() each batch.
         :return: None.
         """
         wandb_config = wandb_config or {}
