@@ -36,7 +36,8 @@ class FitParentClass(nn.Module):
         total_classification = 0
 
         user_defined = True if loss_weights is not None else False
-
+        if not user_defined:
+            loss_weights = LossWeights()
         for images, yolo in dataloader:
             images = images.to(device)
             optimizer.zero_grad()
@@ -107,6 +108,8 @@ class FitParentClass(nn.Module):
         total_classification = 0
 
         user_defined = True if loss_weights is not None else False
+        if not user_defined:
+            loss_weights = LossWeights()
 
         with torch.no_grad():
             for images, yolo in validation_dataloader:
@@ -169,16 +172,16 @@ class FitParentClass(nn.Module):
 
         if loss_weights is None:
             for k in LossWeights().__dict__.keys():
-                wandb_config["initial " + k + "weight"] = "auto"
+                wandb_config["initial " + k + " weight"] = "auto"
 
         else:
             for k in loss_weights.__dict__.keys():
-                wandb_config["initial " + k + "weight"] = loss_weights.__dict__[k]
+                wandb_config["initial " + k + " weight"] = loss_weights.__dict__[k]
 
         wandb_config["max epochs"] = epochs
         wandb_config["optimizer"] = optimizer
-        wandb_config["train_loader length"] = len(train_loader)
-        wandb_config["val_loader length"] = len(val_loader)
+        wandb_config["train_loader length (num batches)"] = len(train_loader)
+        wandb_config["val_loader length (num batches)"] = len(val_loader)
 
         wandb.init(
             project="SCNN",
