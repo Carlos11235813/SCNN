@@ -4,7 +4,9 @@ import wandb
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
+
 from src.callbacks.EarlyStoping import EarlyStopping
+from src.callbacks.SaveBest import SaveBest
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -131,8 +133,8 @@ class FitParentClass(nn.Module):
         )
         device = next(self.parameters()).device
         early_stopping = EarlyStopping(patience=5)
-
-        callbacks = [early_stopping]
+        save_best = SaveBest()
+        callbacks = [early_stopping, save_best]
         for epoch in range(epochs):
             self.train()
             loss = self._train(dataloader=train_loader,
@@ -146,7 +148,10 @@ class FitParentClass(nn.Module):
                                           device=device)
                 print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss}")
                 for callback in callbacks:
-                    callback(epoch=epoch + 1, loss=val_loss)
+                    callback(model=self,
+                             epoch=epoch + 1,
+                             loss=val_loss)
+
                 if any(getattr(cb, "stop", False) for cb in callbacks):
                     break
 
