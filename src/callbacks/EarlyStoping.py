@@ -1,3 +1,4 @@
+import torch
 
 class EarlyStopping:
 
@@ -8,7 +9,7 @@ class EarlyStopping:
         self.stop = False
 
 
-    def __call__(self, epoch: int, loss: float):
+    def __call__(self, model: torch.nn.Module, epoch: int, loss: float):
         if loss < self.best_loss:
             self.best_loss = loss
             self.counter = 0
