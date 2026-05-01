@@ -61,6 +61,9 @@ class FitParentClass(nn.Module):
             loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                                         outputs=outputs,
                                                                                                         targets=targets)
+            obj_mask = targets[:, :, :, 0] == 1
+            cumulative_outputs.append(outputs[obj_mask][..., 5:])
+            cumulative_targets.append(targets[obj_mask][..., 5:])
 
             total_objectness += loss_objectness.item()
             total_localization += loss_localization.item()

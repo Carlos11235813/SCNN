@@ -1,7 +1,11 @@
 import torch
 import wandb
+import warnings
 
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
+
+# Added since average_precision_score, have no zero_division arg, and throws warnings all the time.
+warnings.filterwarnings("ignore", message="No positive class found")
 
 class WandbLogger:
 
@@ -42,7 +46,7 @@ class WandbLogger:
         precision = precision_score(out, tar, average='macro', zero_division=0)
         recall = recall_score(out, tar, average='macro', zero_division=0)
         f1 = f1_score(out, tar, average='macro', zero_division=0)
-        ap = average_precision_score(out, tar, average='macro', zero_division=0)
+        ap = average_precision_score(out, tar, average='macro')
 
         wandb.log({
             f'{process} Classification Precision': precision,
