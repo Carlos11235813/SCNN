@@ -48,6 +48,6 @@ class WandbLogger:
             f'{process} Classification Precision': precision,
             f'{process} Classification Recall': recall,
             f'{process} Classification F1': f1,
-            f'{process} Average precision': ap,
+            f'{process} Classification Average Precision': ap,
         })
 
