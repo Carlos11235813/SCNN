@@ -8,7 +8,7 @@ from src.cnn.DetectionLosses import DetectionLosses
 from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
-
+from src.wandb_logging.WandbLogger import WandbLogger
 class FitParentClass(nn.Module):
     def __init__(self):
         super(FitParentClass, self).__init__()
@@ -36,6 +36,11 @@ class FitParentClass(nn.Module):
         total_objectness = 0
         total_localization = 0
         total_classification = 0
+
+
+        cumulative_outputs = []
+        cumulative_targets = []
+
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -78,12 +83,17 @@ class FitParentClass(nn.Module):
 
             total_loss += loss.item()
 
-        wandb.log({"Training Loss Objectness": total_objectness,
-                   "Training Loss Localization": total_localization,
-                   "Training Loss Classification": total_classification,
-                   "Training Total Loss": total_loss})
+        classify_out = torch.cat(cumulative_outputs, dim=0)
+        classify_targets = torch.cat(cumulative_targets, dim=0)
 
+        WandbLogger.precision_recall_f1(process="Validation Weighted",
+                                        classify_out=classify_out,
+                                        classify_tar=classify_targets)
 
+        WandbLogger.log_losses(process="Train Weighted",
+                               classification_loss=total_classification,
+                               localization_loss=total_localization,
+                               objective_loss=total_objectness)
         return total_loss
 
     def _validate(self,
@@ -109,6 +119,9 @@ class FitParentClass(nn.Module):
         total_localization = 0
         total_classification = 0
 
+        cumulative_outputs = []
+        cumulative_targets = []
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
@@ -127,6 +140,10 @@ class FitParentClass(nn.Module):
                 loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                             outputs=outputs,
                                                                                             targets=targets)
+                obj_mask = targets[:, :, :, 0] == 1
+                cumulative_outputs.append(outputs[obj_mask][..., 5:])
+                cumulative_targets.append(targets[obj_mask][..., 5:])
+
                 if not user_defined:
                     loss_weights.auto_weights(loss_objectness,
                                               loss_localization,
@@ -142,10 +159,18 @@ class FitParentClass(nn.Module):
 
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
-        wandb.log({"Val Loss Objectness": total_objectness,
-                   "Val Loss Localization": total_localization,
-                   "Val Loss Classification": total_classification,
-                   "Validation Total Loss": total_loss})
+
+        classify_out = torch.cat(cumulative_outputs, dim=0)
+        classify_targets = torch.cat(cumulative_targets, dim=0)
+
+        WandbLogger.precision_recall_f1(process="Validation Weighted",
+                                        classify_out=classify_out,
+                                        classify_tar=classify_targets)
+
+        WandbLogger.log_losses(process="Validation Weighted",
+                               localization_loss=total_localization,
+                               classification_loss=total_classification,
+                               objective_loss=total_objectness)
 
         return total_loss
 
