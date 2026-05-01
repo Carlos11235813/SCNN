@@ -1,7 +1,7 @@
 import torch
 import wandb
 
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 
 class WandbLogger:
 
@@ -42,10 +42,12 @@ class WandbLogger:
         precision = precision_score(out, tar, average='macro', zero_division=0)
         recall = recall_score(out, tar, average='macro', zero_division=0)
         f1 = f1_score(out, tar, average='macro', zero_division=0)
+        ap = average_precision_score(out, tar, average='macro', zero_division=0)
 
         wandb.log({
             f'{process} Precision': precision,
             f'{process} Recall': recall,
             f'{process} F1': f1,
+            f'{process} AP': ap,
         })
 
