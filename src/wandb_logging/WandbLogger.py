@@ -45,9 +45,9 @@ class WandbLogger:
         ap = average_precision_score(out, tar, average='macro', zero_division=0)
 
         wandb.log({
-            f'{process} Precision': precision,
-            f'{process} Recall': recall,
-            f'{process} F1': f1,
-            f'{process} AP': ap,
+            f'{process} Classification Precision': precision,
+            f'{process} Classification Recall': recall,
+            f'{process} Classification F1': f1,
+            f'{process} Average precision': ap,
         })
 
