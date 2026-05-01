@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
+import logging
 from src.cnn.FitParentClass import FitParentClass
 
+logger = logging.getLogger(__name__)
 
 class VisDroneCNN(FitParentClass):
     def __init__(self, S: int = 8, B_boxes: int = 1, C: int = 10):
@@ -10,6 +12,7 @@ class VisDroneCNN(FitParentClass):
         B_boxes: number of bounding boxes per grid cell (most models only use 1)
         C: number of classes (here 10)
         """
+        logger.info(f"VisDroneCNN object initialization")
         super(VisDroneCNN, self).__init__()
         self.S = S
         self.B_boxes = B_boxes
