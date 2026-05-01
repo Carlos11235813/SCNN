@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import wandb
+import logging
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
@@ -8,6 +9,8 @@ from src.cnn.DetectionLosses import DetectionLosses
 from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
+
+logger = logging.getLogger(__name__)
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -155,7 +158,9 @@ class FitParentClass(nn.Module):
             train_loader: torch.utils.data.DataLoader,
             wandb_config: dict = None,
             val_loader: torch.utils.data.DataLoader = None,
-            loss_weights: LossWeights = None) -> None:
+            loss_weights: LossWeights = None,
+            early_stopping: int = 10,
+            save_best: str = None) -> None:
         """
         Training loop that works for specified number of epochs.
         It validates model on validation dataloader, if it is specified.
@@ -168,6 +173,8 @@ class FitParentClass(nn.Module):
         :param val_loader: Specifies the dataloader to iterate on in validation mode.
         :param loss_weights: Loss weights used to scale objectness, localization and classification losses.
                              If None, weights are computed automatically via auto_weights() each batch.
+        :param early_stopping: Specifies the number of epochs to stop after, if the val loss does not improve.
+        :param save_best: Specifies path to save the best model.
         :return: None.
         """
         wandb_config = wandb_config or {}
@@ -190,22 +197,33 @@ class FitParentClass(nn.Module):
             config=wandb_config
         )
         device = next(self.parameters()).device
-        early_stopping = EarlyStopping(patience=5)
-        save_best = SaveBest()
+        early_stopping = EarlyStopping(patience=early_stopping)
+        save_best = SaveBest(path=save_best)
         callbacks = [early_stopping, save_best]
+        logger.info(f"Starting Model Training")
+        logger.info(f"Max epochs == {epochs}")
+        logger.info(f"Train dataset len == {len(train_loader)}")
+        logger.info(f"Validation dataset len == {len(val_loader)}")
+        logger.info(f"Optimizer == {optimizer}")
+        logger.info(f"Device == {device}")
+        logger.info(f"Loss Weights == {loss_weights}")
+        logger.info(f"Early stopping patience == {early_stopping}")
+        logger.info(f"Saving best model to == {save_best}")
         for epoch in range(epochs):
+            logger.info(f"Epoch {epoch + 1}/{epochs}")
             self.train()
             loss = self._train(dataloader=train_loader,
                                optimizer=optimizer,
                                device=device,
                                loss_weights=loss_weights)
 
-            print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
+            if val_loader is None:
+                logger.info(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
             if val_loader is not None:
                 self.eval()
                 val_loss = self._validate(validation_dataloader=val_loader,
                                           device=device)
-                print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss}")
+                logger.info(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}, Val Total Loss: {val_loss}")
                 for callback in callbacks:
                     callback(model=self,
                              epoch=epoch + 1,
