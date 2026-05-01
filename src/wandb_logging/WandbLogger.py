@@ -7,9 +7,9 @@ class WandbLogger:
 
     @staticmethod
     def log_losses(process: str,
-                   classification_loss: torch.Tensor,
-                   localization_loss: torch.Tensor,
-                   objective_loss: torch.Tensor) -> None:
+                   classification_loss: float,
+                   localization_loss: float,
+                   objective_loss: float) -> None:
 
         """
         The method is used to log the losses during training/validation to wandb.
@@ -22,7 +22,7 @@ class WandbLogger:
         """
 
 
-        total_loss = classification_loss.item() + localization_loss.item() + objective_loss.item()
+        total_loss = classification_loss + localization_loss + objective_loss
         wandb.log({
             f'{process} Loss Classification': classification_loss,
             f'{process} Loss Localization': localization_loss,
@@ -34,9 +34,14 @@ class WandbLogger:
                     classify_out: torch.Tensor,
                     classify_tar: torch.Tensor) -> None:
 
-        precision = precision_score(classify_out, classify_tar, average='macro')
-        recall = recall_score(classify_out, classify_tar, average='macro')
-        f1 = f1_score(classify_out, classify_tar, average='macro')
+        out = classify_out.cpu().detach()
+        tar = classify_tar.cpu().detach()
+
+        out = (torch.sigmoid(out) > 0.5).numpy().astype(int)
+        tar = tar.numpy().astype(int)
+        precision = precision_score(out, tar, average='macro', zero_division=0)
+        recall = recall_score(out, tar, average='macro', zero_division=0)
+        f1 = f1_score(out, tar, average='macro', zero_division=0)
 
         wandb.log({
             f'{process} Precision': precision,
