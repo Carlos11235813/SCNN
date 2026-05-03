@@ -1,6 +1,8 @@
 from typing import Any
 import torch
+import numpy as np
 from torch import nn
+
 
 class DetectionLosses:
 
@@ -78,3 +80,46 @@ class DetectionLosses:
         union = area1 + area2 - inter + eps
 
         return inter / union
+    
+    @staticmethod
+    def match_prediction(preds, real, iou_threshold=0.5):
+        matched=[]
+        used=set()
+
+        for pred in preds:
+            best_iou=0
+            best_reals=-1
+            pred_box = torch.tensor([pred["bbox"]], dtype=torch.float32)
+            for i, reals  in  enumerate(real):
+                if i in used:
+                    continue
+                gt_box = torch.tensor([reals["bbox"]], dtype=torch.float32)
+                score = DetectionLosses.compute_iou(pred_box, gt_box)[0].item()
+                if score > best_iou :
+                    best_iou=score
+                    best_reals=i
+            if best_iou>=iou_threshold:
+                matched.append(1)
+                used.add(best_reals)
+            else:
+                matched.append(0)
+        return matched
+    
+    @staticmethod
+    def compute_ap(preds, real):
+        preds=sorted(preds, key=lambda x: x["score"], reverse=True)
+        tp = np.array(DetectionLosses.match_prediction(preds, real))
+        fp=1-tp
+        tp_c=np.cumsum(tp)
+        fp_c=np.cumsum(fp)
+        recalls=tp_c/len(real)
+        precisions=tp_c/(tp_c+fp_c+1e-6)
+
+        ap=0
+        for t in np.linspace(0,1,11):
+            if np.any(recalls>=t):
+                ap+=np.max(precisions[recalls>=t])
+        ap /= 11
+
+        return ap
+                
