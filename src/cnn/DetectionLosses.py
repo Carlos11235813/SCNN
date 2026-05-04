@@ -2,6 +2,7 @@ from typing import Any
 import torch
 import numpy as np
 from torch import nn
+from src.detection_demo.demo_utils import models_output_to_boxes
 
 
 class DetectionLosses:
@@ -49,38 +50,78 @@ class DetectionLosses:
         loss_classification = criterion_classification(classify_out, classify_tar)
 
         return loss_objectness, loss_localization, loss_classification
+    
+    @staticmethod
+    def convert_gt_to_xyxy(real):
+        converted = []
+        for r in real:
+            x, y, w, h = r["bbox"]
+
+            x1 = x - w / 2
+            y1 = y - h / 2
+            x2 = x + w / 2
+            y2 = y + h / 2
+
+            converted.append({
+                "bbox": [x1, y1, x2, y2],
+                "class": r["class"]
+            })
+        return converted
 
 
     @staticmethod
     def compute_iou(boxes1: torch.Tensor,
-                    boxes2: torch.Tensor,
-                    eps: float=1e-6) -> torch.Tensor:
+                boxes2: torch.Tensor,
+                eps: float=1e-6) -> torch.Tensor:
 
-        x1_1 = boxes1[:, 0] - boxes1[:, 2] / 2
-        y1_1 = boxes1[:, 1] - boxes1[:, 3] / 2
-        x2_1 = boxes1[:, 0] + boxes1[:, 2] / 2
-        y2_1 = boxes1[:, 1] + boxes1[:, 3] / 2
-
-        x1_2 = boxes2[:, 0] - boxes2[:, 2] / 2
-        y1_2 = boxes2[:, 1] - boxes2[:, 3] / 2
-        x2_2 = boxes2[:, 0] + boxes2[:, 2] / 2
-        y2_2 = boxes2[:, 1] + boxes2[:, 3] / 2
-
-        x1 = torch.max(x1_1, x1_2)
-        y1 = torch.max(y1_1, y1_2)
-        x2 = torch.min(x2_1, x2_2)
-        y2 = torch.min(y2_1, y2_2)
+        x1 = torch.max(boxes1[:, 0], boxes2[:, 0])
+        y1 = torch.max(boxes1[:, 1], boxes2[:, 1])
+        x2 = torch.min(boxes1[:, 2], boxes2[:, 2])
+        y2 = torch.min(boxes1[:, 3], boxes2[:, 3])
 
         inter = (x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0)
 
-        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-
-        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+        area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
+        area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
 
         union = area1 + area2 - inter + eps
 
         return inter / union
     
+
+    @staticmethod
+    def build_preds_from_output(outputs):
+        B, S, S, C = outputs.shape
+    
+        objectness = torch.sigmoid(outputs[..., 0])
+        class_probs = torch.sigmoid(outputs[..., 5:])
+
+        cx = torch.sigmoid(outputs[..., 1])
+        cy = torch.sigmoid(outputs[..., 2])
+        w = torch.sigmoid(outputs[..., 3])
+        h = torch.sigmoid(outputs[..., 4])
+
+        boxes = models_output_to_boxes(cx, cy, w, h)
+
+        preds = []
+
+        for b in range(B):
+            for y in range(S):
+                for x in range(S):
+                    if objectness[b, y, x] < 0.5:
+                        continue
+
+                    cls = torch.argmax(class_probs[b, y, x]).item()
+                    score = (objectness[b, y, x] * class_probs[b, y, x, cls]).item()
+
+                    preds.append({
+                        "bbox": boxes[b, y, x].tolist(),
+                        "score": score,
+                        "class": cls
+                    })
+
+        return preds
+
     @staticmethod
     def match_prediction(preds, real, iou_threshold=0.5):
         matched=[]
@@ -92,6 +133,8 @@ class DetectionLosses:
             pred_box = torch.tensor([pred["bbox"]], dtype=torch.float32)
             for i, reals  in  enumerate(real):
                 if i in used:
+                    continue
+                if pred["class"] != reals["class"]:
                     continue
                 gt_box = torch.tensor([reals["bbox"]], dtype=torch.float32)
                 score = DetectionLosses.compute_iou(pred_box, gt_box)[0].item()
@@ -107,19 +150,21 @@ class DetectionLosses:
     
     @staticmethod
     def compute_ap(preds, real):
-        preds=sorted(preds, key=lambda x: x["score"], reverse=True)
+        real = DetectionLosses.convert_gt_to_xyxy(real)
+        if len(real) == 0:
+            return 0.0
+        preds = sorted(preds, key=lambda x: x["score"], reverse=True)
         tp = np.array(DetectionLosses.match_prediction(preds, real))
-        fp=1-tp
-        tp_c=np.cumsum(tp)
-        fp_c=np.cumsum(fp)
-        recalls=tp_c/len(real)
-        precisions=tp_c/(tp_c+fp_c+1e-6)
-
-        ap=0
-        for t in np.linspace(0,1,11):
-            if np.any(recalls>=t):
-                ap+=np.max(precisions[recalls>=t])
-        ap /= 11
-
+        fp = 1 - tp
+        tp_c = np.cumsum(tp)
+        fp_c = np.cumsum(fp)
+        recalls = tp_c / len(real)
+        precisions = tp_c / (tp_c + fp_c + 1e-6)
+        recalls = np.concatenate(([0], recalls, [1]))
+        precisions = np.concatenate(([0], precisions, [0]))
+        for i in range(len(precisions) - 1, 0, -1):
+            precisions[i-1] = max(precisions[i-1], precisions[i])
+        indices = np.where(recalls[1:] != recalls[:-1])[0]
+        ap = np.sum((recalls[indices+1] - recalls[indices]) * precisions[indices+1])
         return ap
                 

@@ -8,6 +8,7 @@ from src.cnn.DetectionLosses import DetectionLosses
 from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
+from src.cnn.cnn_utils import apply_nms
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -108,6 +109,8 @@ class FitParentClass(nn.Module):
         total_objectness = 0
         total_localization = 0
         total_classification = 0
+        total_ap = 0.0
+        num_batches = 0
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -142,10 +145,24 @@ class FitParentClass(nn.Module):
 
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
+
+                preds = DetectionLosses.build_preds_from_output(outputs)
+                preds = apply_nms(preds)
+                real = []
+                for y in yolo:
+                    for box, label in zip(y.boxes, y.labels):
+                        real.append({
+                            "bbox": box.tolist(),
+                            "class": label.item()})
+                ap = DetectionLosses.compute_ap(preds, real)
+                total_ap += ap
+                num_batches += 1
+        mean_ap = total_ap / max(num_batches, 1)
         wandb.log({"Val Loss Objectness": total_objectness,
                    "Val Loss Localization": total_localization,
                    "Val Loss Classification": total_classification,
-                   "Validation Total Loss": total_loss})
+                   "Validation Total Loss": total_loss,
+                   "Validation mAP": mean_ap})
 
         return total_loss
 

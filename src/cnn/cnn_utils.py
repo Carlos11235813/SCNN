@@ -51,3 +51,24 @@ def non_maximum_suppression(boxes: torch.Tensor,
         indices = indices[1:][iou < iou_threshold]
     
     return torch.tensor(keep, dtype=torch.long)
+
+def apply_nms(preds, iou_threshold=0.5):
+    final_preds = []
+
+    classes = set(p["class"] for p in preds)
+
+    for cls in classes:
+        cls_preds = [p for p in preds if p["class"] == cls]
+
+        if len(cls_preds) == 0:
+            continue
+
+        boxes = torch.tensor([p["bbox"] for p in cls_preds], dtype=torch.float32)
+        scores = torch.tensor([p["score"] for p in cls_preds], dtype=torch.float32)
+
+        keep = non_maximum_suppression(boxes, scores, iou_threshold)
+
+        for i in keep:
+            final_preds.append(cls_preds[i])
+
+    return final_preds
