@@ -50,9 +50,10 @@ def non_maximum_suppression(boxes: torch.Tensor,
         iou = DetectionLosses.compute_iou(current_box, remaining_boxes)
         indices = indices[1:][iou < iou_threshold]
     
-    return torch.tensor(keep, dtype=torch.long)
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
 
 def apply_nms(preds, iou_threshold=0.5):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     final_preds = []
 
     classes = set(p["class"] for p in preds)
@@ -63,8 +64,8 @@ def apply_nms(preds, iou_threshold=0.5):
         if len(cls_preds) == 0:
             continue
 
-        boxes = torch.tensor([p["bbox"] for p in cls_preds], dtype=torch.float32)
-        scores = torch.tensor([p["score"] for p in cls_preds], dtype=torch.float32)
+        boxes = torch.tensor([p["bbox"] for p in cls_preds], dtype=torch.float32, device=device)
+        scores = torch.tensor([p["score"] for p in cls_preds], dtype=torch.float32, device=device)
 
         keep = non_maximum_suppression(boxes, scores, iou_threshold)
 

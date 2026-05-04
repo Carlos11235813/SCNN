@@ -149,22 +149,29 @@ class DetectionLosses:
         return matched
     
     @staticmethod
-    def compute_ap(preds, real):
+    def compute_ap(preds, real, iou_threshold=0.5):
         real = DetectionLosses.convert_gt_to_xyxy(real)
         if len(real) == 0:
             return 0.0
+
         preds = sorted(preds, key=lambda x: x["score"], reverse=True)
-        tp = np.array(DetectionLosses.match_prediction(preds, real))
+
+        tp = np.array(DetectionLosses.match_prediction(preds, real, iou_threshold))
         fp = 1 - tp
+
         tp_c = np.cumsum(tp)
         fp_c = np.cumsum(fp)
+
         recalls = tp_c / len(real)
         precisions = tp_c / (tp_c + fp_c + 1e-6)
+
         recalls = np.concatenate(([0], recalls, [1]))
         precisions = np.concatenate(([0], precisions, [0]))
+
         for i in range(len(precisions) - 1, 0, -1):
             precisions[i-1] = max(precisions[i-1], precisions[i])
+
         indices = np.where(recalls[1:] != recalls[:-1])[0]
         ap = np.sum((recalls[indices+1] - recalls[indices]) * precisions[indices+1])
+
         return ap
-                

@@ -109,8 +109,9 @@ class FitParentClass(nn.Module):
         total_objectness = 0
         total_localization = 0
         total_classification = 0
-        total_ap = 0.0
-        num_batches = 0
+        total_ap50 = 0.0
+        total_ap75 = 0.0
+        num_images = 0
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -146,23 +147,31 @@ class FitParentClass(nn.Module):
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
 
-                preds = DetectionLosses.build_preds_from_output(outputs)
-                preds = apply_nms(preds)
-                real = []
-                for y in yolo:
-                    for box, label in zip(y.boxes, y.labels):
+                for b in range(outputs.size(0)):  # iteracja po obrazach w batchu
+
+                    preds = DetectionLosses.build_preds_from_output(outputs[b:b+1])
+                    preds = apply_nms(preds)
+
+                    real = []
+                    for box, label in zip(yolo[b].boxes, yolo[b].labels):
                         real.append({
                             "bbox": box.tolist(),
                             "class": label.item()})
-                ap = DetectionLosses.compute_ap(preds, real)
-                total_ap += ap
-                num_batches += 1
-        mean_ap = total_ap / max(num_batches, 1)
+
+                    ap50 = DetectionLosses.compute_ap(preds, real, 0.5)
+                    ap75 = DetectionLosses.compute_ap(preds, real, 0.75)
+
+                    total_ap50 += ap50
+                    total_ap75 += ap75
+                    num_images += 1
+        mean_ap50 = total_ap50 / max(num_images, 1)
+        mean_ap75 = total_ap75 / max(num_images, 1)
         wandb.log({"Val Loss Objectness": total_objectness,
                    "Val Loss Localization": total_localization,
                    "Val Loss Classification": total_classification,
                    "Validation Total Loss": total_loss,
-                   "Validation mAP": mean_ap})
+                   "Validation AP 0.5": mean_ap50,
+                   "Validation AP 0.75": mean_ap75})
 
         return total_loss
 
