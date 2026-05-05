@@ -23,8 +23,10 @@ class VisDrone(Dataset):
         )
         if not transform:
             logger.warning(f"Transform not specified, using default transform")
-            logger.info(f"Default transform == {transform}")
-            self.transform = transform or tra
+            logger.info(f"Default transform == {tra}")
+            self.transform = tra
+        else:
+            self.transform = transform
 
 
     def __len__(self):
