@@ -1,12 +1,15 @@
 import torch
 import wandb
 import warnings
+import logging
 
 from src.cnn.DetectionLosses import DetectionLosses
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 
 # Added since average_precision_score, have no zero_division arg, and throws warnings all the time.
 warnings.filterwarnings("ignore", message="No positive class found")
+
+logger = logging.getLogger(__name__)
 
 class WandbLogger:
 
@@ -26,6 +29,7 @@ class WandbLogger:
         :return: None
         """
 
+        logger.info(f"[{process}] Attempting to log losses to wandb.")
 
         total_loss = classification_loss + localization_loss + objective_loss
         wandb.log({
@@ -50,6 +54,8 @@ class WandbLogger:
         :param classify_tar: Classification targets
         :return: None
         """
+
+        logger.info(f"[{process}] Attempting to log precision/recall/f1 to wandb.")
 
         out = classify_out.cpu().detach()
         tar = classify_tar.cpu().detach()
@@ -83,6 +89,9 @@ class WandbLogger:
         :param device: Device to use for computation.
         :return: None
         """
+
+        logger.info(f"[{process}] Attempting to log mAP@50/mAP@75,  to wandb.")
+
         total_ap50 = 0.0
         total_ap75 = 0.0
         num_images = len(preds_per_image)
