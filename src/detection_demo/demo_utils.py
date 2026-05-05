@@ -45,8 +45,8 @@ def models_output_to_boxes(batch_center_x: torch.Tensor,
     cell_w = img_w / grid
     cell_h = img_h / grid
 
-    offset_x = torch.arange(grid).float().view(1, 1, grid).expand(batch_center_x.shape[0], grid, grid)
-    offset_y = torch.arange(grid).float().view(1, grid, 1).expand(batch_center_y.shape[0], grid, grid)
+    offset_x = torch.arange(grid).float().view(1, 1, grid).expand(batch_center_x.shape[0], grid, grid).to(batch_center_x.device)
+    offset_y = torch.arange(grid).float().view(1, grid, 1).expand(batch_center_y.shape[0], grid, grid).to(batch_center_y.device)
 
     cx = (offset_x + batch_center_x) * cell_w
     cy = (offset_y + batch_center_y) * cell_h

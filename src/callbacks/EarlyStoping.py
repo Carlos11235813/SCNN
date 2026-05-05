@@ -1,4 +1,7 @@
 import torch
+import logging
+
+logger = logging.getLogger(__name__)
 
 class EarlyStopping:
 
@@ -17,4 +20,4 @@ class EarlyStopping:
             self.counter += 1
             if self.counter >= self.patience:
                 self.stop = True
-                print(f"Early stopping, at epoch == {epoch}. [BREAK]")
+                logger.warning(f"Early stopping, at epoch == {epoch}. [BREAK]")

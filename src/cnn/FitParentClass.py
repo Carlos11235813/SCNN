@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import wandb
+import logging
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
@@ -9,6 +10,9 @@ from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
 from src.cnn.cnn_utils import apply_nms
+from src.wandb_logging.WandbLogger import WandbLogger
+
+logger = logging.getLogger(__name__)
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -38,6 +42,11 @@ class FitParentClass(nn.Module):
         total_localization = 0
         total_classification = 0
 
+
+        cumulative_outputs = []
+        cumulative_targets = []
+
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
@@ -57,6 +66,9 @@ class FitParentClass(nn.Module):
             loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                                         outputs=outputs,
                                                                                                         targets=targets)
+            obj_mask = targets[:, :, :, 0] == 1
+            cumulative_outputs.append(outputs[obj_mask][..., 5:])
+            cumulative_targets.append(targets[obj_mask][..., 5:])
 
             total_objectness += loss_objectness.item()
             total_localization += loss_localization.item()
@@ -79,12 +91,17 @@ class FitParentClass(nn.Module):
 
             total_loss += loss.item()
 
-        wandb.log({"Training Loss Objectness": total_objectness,
-                   "Training Loss Localization": total_localization,
-                   "Training Loss Classification": total_classification,
-                   "Training Total Loss": total_loss})
+        classify_out = torch.cat(cumulative_outputs, dim=0)
+        classify_targets = torch.cat(cumulative_targets, dim=0)
 
+        WandbLogger.precision_recall_f1(process="Validation Weighted",
+                                        classify_out=classify_out,
+                                        classify_tar=classify_targets)
 
+        WandbLogger.log_losses(process="Train Weighted",
+                               classification_loss=total_classification,
+                               localization_loss=total_localization,
+                               objective_loss=total_objectness)
         return total_loss
 
     def _validate(self,
@@ -113,6 +130,9 @@ class FitParentClass(nn.Module):
         total_ap75 = 0.0
         num_images = 0
 
+        cumulative_outputs = []
+        cumulative_targets = []
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
@@ -131,6 +151,10 @@ class FitParentClass(nn.Module):
                 loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                             outputs=outputs,
                                                                                             targets=targets)
+                obj_mask = targets[:, :, :, 0] == 1
+                cumulative_outputs.append(outputs[obj_mask][..., 5:])
+                cumulative_targets.append(targets[obj_mask][..., 5:])
+
                 if not user_defined:
                     loss_weights.auto_weights(loss_objectness,
                                               loss_localization,
@@ -147,19 +171,21 @@ class FitParentClass(nn.Module):
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
 
-                for b in range(outputs.size(0)):  # iteracja po obrazach w batchu
+                for b, (out, target) in enumerate(zip(outputs, yolo)):
 
-                    preds = DetectionLosses.build_preds_from_output(outputs[b:b+1])
-                    preds = apply_nms(preds)
+                    preds = DetectionLosses.build_preds_from_output(out.unsqueeze(0))
+                    preds = apply_nms(preds, device)
 
-                    real = []
-                    for box, label in zip(yolo[b].boxes, yolo[b].labels):
-                        real.append({
+                    real = [
+                        {
                             "bbox": box.tolist(),
-                            "class": label.item()})
-
-                    ap50 = DetectionLosses.compute_ap(preds, real, 0.5)
-                    ap75 = DetectionLosses.compute_ap(preds, real, 0.75)
+                            "class": label.item(),
+                            "image_id": 0
+                            }
+                        for box, label in zip(target.boxes, target.labels)
+                        ]
+                    ap50 = DetectionLosses.compute_ap(preds, real, device, 0.5)
+                    ap75 = DetectionLosses.compute_ap(preds, real, device, 0.75)
 
                     total_ap50 += ap50
                     total_ap75 += ap75
@@ -172,6 +198,17 @@ class FitParentClass(nn.Module):
                    "Validation Total Loss": total_loss,
                    "Validation AP 0.5": mean_ap50,
                    "Validation AP 0.75": mean_ap75})
+        classify_out = torch.cat(cumulative_outputs, dim=0)
+        classify_targets = torch.cat(cumulative_targets, dim=0)
+
+        WandbLogger.precision_recall_f1(process="Validation Weighted",
+                                        classify_out=classify_out,
+                                        classify_tar=classify_targets)
+
+        WandbLogger.log_losses(process="Validation Weighted",
+                               localization_loss=total_localization,
+                               classification_loss=total_classification,
+                               objective_loss=total_objectness)
 
         return total_loss
 
@@ -181,7 +218,9 @@ class FitParentClass(nn.Module):
             train_loader: torch.utils.data.DataLoader,
             wandb_config: dict = None,
             val_loader: torch.utils.data.DataLoader = None,
-            loss_weights: LossWeights = None) -> None:
+            loss_weights: LossWeights = None,
+            early_stopping: int = 10,
+            save_best: str = None) -> None:
         """
         Training loop that works for specified number of epochs.
         It validates model on validation dataloader, if it is specified.
@@ -194,6 +233,8 @@ class FitParentClass(nn.Module):
         :param val_loader: Specifies the dataloader to iterate on in validation mode.
         :param loss_weights: Loss weights used to scale objectness, localization and classification losses.
                              If None, weights are computed automatically via auto_weights() each batch.
+        :param early_stopping: Specifies the number of epochs to stop after, if the val loss does not improve.
+        :param save_best: Specifies path to save the best model.
         :return: None.
         """
         wandb_config = wandb_config or {}
@@ -216,22 +257,33 @@ class FitParentClass(nn.Module):
             config=wandb_config
         )
         device = next(self.parameters()).device
-        early_stopping = EarlyStopping(patience=5)
-        save_best = SaveBest()
+        early_stopping = EarlyStopping(patience=early_stopping)
+        save_best = SaveBest(path=save_best)
         callbacks = [early_stopping, save_best]
+        logger.info(f"Starting Model Training")
+        logger.info(f"Max epochs == {epochs}")
+        logger.info(f"Train dataset len == {len(train_loader)}")
+        logger.info(f"Validation dataset len == {len(val_loader)}")
+        logger.info(f"Optimizer == {optimizer}")
+        logger.info(f"Device == {device}")
+        logger.info(f"Loss Weights == {loss_weights}")
+        logger.info(f"Early stopping patience == {early_stopping}")
+        logger.info(f"Saving best model to == {save_best}")
         for epoch in range(epochs):
+            logger.info(f"Epoch {epoch + 1}/{epochs}")
             self.train()
             loss = self._train(dataloader=train_loader,
                                optimizer=optimizer,
                                device=device,
                                loss_weights=loss_weights)
 
-            print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
+            if val_loader is None:
+                logger.info(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
             if val_loader is not None:
                 self.eval()
                 val_loss = self._validate(validation_dataloader=val_loader,
                                           device=device)
-                print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss}")
+                logger.info(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}, Val Total Loss: {val_loss}")
                 for callback in callbacks:
                     callback(model=self,
                              epoch=epoch + 1,
