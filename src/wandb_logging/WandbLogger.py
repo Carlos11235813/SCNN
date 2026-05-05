@@ -38,6 +38,18 @@ class WandbLogger:
                     classify_out: torch.Tensor,
                     classify_tar: torch.Tensor) -> None:
 
+        """
+        This method is used to log metrics for classification to wandb. The method logs:
+            - Precision
+            - Recall
+            - F1
+
+        :param process: Indicates type of losses, ex: process == \"Training Weighted\" or process == \"Validation Original\".
+        :param classify_out: Classification outputs
+        :param classify_tar: Classification targets
+        :return: None
+        """
+
         out = classify_out.cpu().detach()
         tar = classify_tar.cpu().detach()
 
