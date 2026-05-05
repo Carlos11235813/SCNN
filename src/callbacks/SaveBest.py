@@ -1,6 +1,9 @@
 import os
 import datetime
 import torch
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SaveBest:
 
@@ -12,4 +15,4 @@ class SaveBest:
         if loss < self.best_loss:
             self.best_loss = loss
             torch.save(model.state_dict(), self.path)
-            print(f"Save Best, at epoch == {epoch}. [Best loss: {loss}]")
+            logger.info(f"Save Best, at epoch == {epoch}. [Best loss: {loss}]")

@@ -1,12 +1,16 @@
 import torch
+import logging
 from src.models.Yolo import Yolo
 from PIL import Image
 from pathlib import Path
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+logger = logging.getLogger(__name__)
+
 class VisDrone(Dataset):
     def __init__(self, data_dir: str, labels_dir: str, transform=None):
+        logger.info(f"Loading VisDrone dataset from {data_dir}")
         super().__init__()
         self.data_dir = Path(data_dir)
         self.labels_dir = Path(labels_dir)
@@ -17,7 +21,10 @@ class VisDrone(Dataset):
                 transforms.Resize((64, 64))
             ]
         )
-        self.transform = transform or tra
+        if not transform:
+            logger.warning(f"Transform not specified, using default transform")
+            logger.info(f"Default transform == {transform}")
+            self.transform = transform or tra
 
 
     def __len__(self):
