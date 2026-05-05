@@ -147,19 +147,21 @@ class FitParentClass(nn.Module):
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
 
-                for b in range(outputs.size(0)):  # iteracja po obrazach w batchu
+                for b, (out, target) in enumerate(zip(outputs, yolo)):
 
-                    preds = DetectionLosses.build_preds_from_output(outputs[b:b+1])
-                    preds = apply_nms(preds)
+                    preds = DetectionLosses.build_preds_from_output(out.unsqueeze(0))
+                    preds = apply_nms(preds, device)
 
-                    real = []
-                    for box, label in zip(yolo[b].boxes, yolo[b].labels):
-                        real.append({
+                    real = [
+                        {
                             "bbox": box.tolist(),
-                            "class": label.item()})
-
-                    ap50 = DetectionLosses.compute_ap(preds, real, 0.5)
-                    ap75 = DetectionLosses.compute_ap(preds, real, 0.75)
+                            "class": label.item(),
+                            "image_id": 0
+                            }
+                        for box, label in zip(target.boxes, target.labels)
+                        ]
+                    ap50 = DetectionLosses.compute_ap(preds, real, device, 0.5)
+                    ap75 = DetectionLosses.compute_ap(preds, real, device, 0.75)
 
                     total_ap50 += ap50
                     total_ap75 += ap75

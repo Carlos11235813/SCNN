@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from torch import nn
 from src.detection_demo.demo_utils import models_output_to_boxes
+from src.detection_demo.demo_utils import decode_prediction
 
 
 class DetectionLosses:
@@ -50,29 +51,25 @@ class DetectionLosses:
         loss_classification = criterion_classification(classify_out, classify_tar)
 
         return loss_objectness, loss_localization, loss_classification
-    
-    @staticmethod
-    def convert_gt_to_xyxy(real):
-        converted = []
-        for r in real:
-            x, y, w, h = r["bbox"]
-
-            x1 = x - w / 2
-            y1 = y - h / 2
-            x2 = x + w / 2
-            y2 = y + h / 2
-
-            converted.append({
-                "bbox": [x1, y1, x2, y2],
-                "class": r["class"]
-            })
-        return converted
 
 
     @staticmethod
     def compute_iou(boxes1: torch.Tensor,
                 boxes2: torch.Tensor,
                 eps: float=1e-6) -> torch.Tensor:
+        """
+    Computes Intersection over Union (IoU) between two sets of bounding boxes.
+
+    Both input tensors are expected to have shape [N, 4], where each box is defined
+    in (x1, y1, x2, y2) format. The function computes IoU element-wise, meaning
+    boxes1[i] is compared with boxes2[i].
+
+    :param boxes1: Tensor of predicted bounding boxes, shape [N, 4].
+    :param boxes2: Tensor of ground truth bounding boxes, shape [N, 4].
+    :param eps: Small value to avoid division by zero.
+    :return: Tensor of IoU values for each corresponding pair of boxes, shape [N].
+        """
+
 
         x1 = torch.max(boxes1[:, 0], boxes2[:, 0])
         y1 = torch.max(boxes1[:, 1], boxes2[:, 1])
@@ -91,52 +88,84 @@ class DetectionLosses:
 
     @staticmethod
     def build_preds_from_output(outputs):
-        B, S, S, C = outputs.shape
-    
-        objectness = torch.sigmoid(outputs[..., 0])
-        class_probs = torch.sigmoid(outputs[..., 5:])
+        """
+    Builds list of predicted bounding boxes from model outputs.
 
-        cx = torch.sigmoid(outputs[..., 1])
-        cy = torch.sigmoid(outputs[..., 2])
-        w = torch.sigmoid(outputs[..., 3])
-        h = torch.sigmoid(outputs[..., 4])
+    The function decodes raw model outputs using sigmoid/softmax activations,
+    converts them into absolute pixel coordinates, filters predictions based on
+    objectness score, and assigns class labels with confidence scores.
 
+    :param outputs: Raw model output tensor of shape (batch_size, grid_size, grid_size, 5 + num_classes).
+    :return: List of predictions, where each prediction is a dictionary:
+         {
+             "bbox": [x1, y1, x2, y2],
+             "score": confidence score,
+             "class": predicted class index,
+             "image_id": index of image in batch
+         }
+        """
+        cx, cy, w, h, objectness, class_probs = decode_prediction(outputs)
         boxes = models_output_to_boxes(cx, cy, w, h)
+
+        B, S, _, _ = outputs.shape
 
         preds = []
 
         for b in range(B):
-            for y in range(S):
-                for x in range(S):
-                    if objectness[b, y, x] < 0.5:
-                        continue
+            mask = objectness[b] > 0.5
 
-                    cls = torch.argmax(class_probs[b, y, x]).item()
-                    score = (objectness[b, y, x] * class_probs[b, y, x, cls]).item()
+            if mask.sum() == 0:
+                continue
 
-                    preds.append({
-                        "bbox": boxes[b, y, x].tolist(),
-                        "score": score,
-                        "class": cls
-                    })
+            b_boxes = boxes[b][mask]
+            b_obj = objectness[b][mask]
+            b_cls_probs = class_probs[b][mask]
+
+            cls = torch.argmax(b_cls_probs, dim=-1)
+            idx = torch.arange(len(cls), device=cls.device)
+            scores = b_obj * b_cls_probs[idx, cls]
+
+            for i in range(len(cls)):
+                preds.append({
+                    "bbox": b_boxes[i].tolist(),
+                    "score": scores[i].item(),
+                    "class": cls[i].item(),
+                    "image_id": b
+                })
 
         return preds
 
     @staticmethod
-    def match_prediction(preds, real, iou_threshold=0.5):
+    def match_prediction(preds, real, device, iou_threshold=0.5):
+        """
+    Matches predicted bounding boxes with ground truth boxes using IoU.
+
+    Each prediction is assigned as True Positive (1) or False Positive (0) based on:
+    - IoU threshold
+    - matching class
+    - matching image_id
+    - ensuring each ground truth box is matched at most once
+
+    :param preds: List of predicted boxes (dict format with bbox, class, image_id).
+    :param real: List of ground truth boxes (same format as preds, without score).
+    :param iou_threshold: Minimum IoU required to consider a prediction as correct.
+    :return: List of integers (1 for True Positive, 0 for False Positive).
+        """
         matched=[]
         used=set()
 
         for pred in preds:
             best_iou=0
             best_reals=-1
-            pred_box = torch.tensor([pred["bbox"]], dtype=torch.float32)
+            pred_box = torch.tensor([pred["bbox"]], dtype=torch.float32, device=device)
             for i, reals  in  enumerate(real):
                 if i in used:
                     continue
                 if pred["class"] != reals["class"]:
                     continue
-                gt_box = torch.tensor([reals["bbox"]], dtype=torch.float32)
+                if pred["image_id"] != reals["image_id"]:
+                    continue
+                gt_box = torch.tensor([reals["bbox"]], dtype=torch.float32, device=device)
                 score = DetectionLosses.compute_iou(pred_box, gt_box)[0].item()
                 if score > best_iou :
                     best_iou=score
@@ -149,14 +178,26 @@ class DetectionLosses:
         return matched
     
     @staticmethod
-    def compute_ap(preds, real, iou_threshold=0.5):
-        real = DetectionLosses.convert_gt_to_xyxy(real)
+    
+    def compute_ap(preds, real, device, iou_threshold=0.5):
+        """
+    Computes Average Precision (AP) for a single IoU threshold.
+
+    Predictions are sorted by confidence score, then matched with ground truth boxes.
+    Precision and recall are calculated cumulatively, and AP is computed as the area
+    under the precision-recall curve using interpolation.
+
+    :param preds: List of predicted boxes (dict format with bbox, score, class, image_id).
+    :param real: List of ground truth boxes (dict format with bbox, class, image_id).
+    :param iou_threshold: IoU threshold used to determine True Positives.
+    :return: Average Precision (float) for given IoU threshold.
+        """
         if len(real) == 0:
             return 0.0
 
         preds = sorted(preds, key=lambda x: x["score"], reverse=True)
 
-        tp = np.array(DetectionLosses.match_prediction(preds, real, iou_threshold))
+        tp = np.array(DetectionLosses.match_prediction(preds, real, device, iou_threshold))
         fp = 1 - tp
 
         tp_c = np.cumsum(tp)
