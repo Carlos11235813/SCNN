@@ -126,9 +126,6 @@ class FitParentClass(nn.Module):
         total_objectness = 0
         total_localization = 0
         total_classification = 0
-        total_ap50 = 0.0
-        total_ap75 = 0.0
-        num_images = 0
 
         cumulative_outputs = []
         cumulative_targets = []
@@ -171,35 +168,26 @@ class FitParentClass(nn.Module):
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
 
+                preds_per_image = []
+                real_per_image = []
                 for b, (out, target) in enumerate(zip(outputs, yolo)):
-
                     preds = DetectionLosses.build_preds_from_output(out.unsqueeze(0))
                     preds = apply_nms(preds, device)
-
                     real = [
-                        {
-                            "bbox": box.tolist(),
-                            "class": label.item(),
-                            "image_id": 0
-                            }
+                        {"bbox": box.tolist(), "class": label.item(), "image_id": 0}
                         for box, label in zip(target.boxes, target.labels)
-                        ]
-                    ap50 = DetectionLosses.compute_ap(preds, real, device, 0.5)
-                    ap75 = DetectionLosses.compute_ap(preds, real, device, 0.75)
+                    ]
+                    preds_per_image.append(preds)
+                    real_per_image.append(real)
 
-                    total_ap50 += ap50
-                    total_ap75 += ap75
-                    num_images += 1
-        mean_ap50 = total_ap50 / max(num_images, 1)
-        mean_ap75 = total_ap75 / max(num_images, 1)
-        wandb.log({"Val Loss Objectness": total_objectness,
-                   "Val Loss Localization": total_localization,
-                   "Val Loss Classification": total_classification,
-                   "Validation Total Loss": total_loss,
-                   "Validation AP 0.5": mean_ap50,
-                   "Validation AP 0.75": mean_ap75})
+
         classify_out = torch.cat(cumulative_outputs, dim=0)
         classify_targets = torch.cat(cumulative_targets, dim=0)
+
+        WandbLogger.ap_metrics(process="Validation Weighted",
+                               preds_per_image=preds_per_image,
+                               real_per_image=real_per_image,
+                               device=device)
 
         WandbLogger.precision_recall_f1(process="Validation Weighted",
                                         classify_out=classify_out,

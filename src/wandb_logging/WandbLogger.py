@@ -1,11 +1,15 @@
 import torch
 import wandb
 import warnings
+import logging
 
+from src.cnn.DetectionLosses import DetectionLosses
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 
 # Added since average_precision_score, have no zero_division arg, and throws warnings all the time.
 warnings.filterwarnings("ignore", message="No positive class found")
+
+logger = logging.getLogger(__name__)
 
 class WandbLogger:
 
@@ -25,6 +29,7 @@ class WandbLogger:
         :return: None
         """
 
+        logger.info(f"[{process}] Attempting to log losses to wandb.")
 
         total_loss = classification_loss + localization_loss + objective_loss
         wandb.log({
@@ -50,6 +55,8 @@ class WandbLogger:
         :return: None
         """
 
+        logger.info(f"[{process}] Attempting to log precision/recall/f1 to wandb.")
+
         out = classify_out.cpu().detach()
         tar = classify_tar.cpu().detach()
 
@@ -67,3 +74,36 @@ class WandbLogger:
             f'{process} Classification Average Precision': ap,
         })
 
+
+    @staticmethod
+    def ap_metrics(process: str,
+                   preds_per_image: list[list[dict]],
+                   real_per_image: list[list[dict]],
+                   device: torch.device) -> None:
+        """
+        Computes and logs mean AP@50 and AP@75 to wandb.
+
+        :param process: Indicates type of losses, ex: process == \"Training Weighted\" or process == \"Validation Original\".
+        :param preds_per_image: List of predictions per image (each element is a list of pred dicts).
+        :param real_per_image: List of ground truth boxes per image (each element is a list of gt dicts).
+        :param device: Device to use for computation.
+        :return: None
+        """
+
+        logger.info(f"[{process}] Attempting to log mAP@50/mAP@75,  to wandb.")
+
+        total_ap50 = 0.0
+        total_ap75 = 0.0
+        num_images = len(preds_per_image)
+
+        for preds, real in zip(preds_per_image, real_per_image):
+            total_ap50 += DetectionLosses.compute_ap(preds, real, device, 0.5)
+            total_ap75 += DetectionLosses.compute_ap(preds, real, device, 0.75)
+
+        mean_ap50 = total_ap50 / max(num_images, 1)
+        mean_ap75 = total_ap75 / max(num_images, 1)
+
+        wandb.log({
+            f'{process} mAP@50': mean_ap50,
+            f'{process} mAP@75': mean_ap75,
+        })
