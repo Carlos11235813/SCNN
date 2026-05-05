@@ -1,6 +1,5 @@
 from typing import Any
 import torch
-import numpy as np
 from torch import nn
 from src.detection_demo.demo_utils import models_output_to_boxes
 from src.detection_demo.demo_utils import decode_prediction
@@ -87,7 +86,7 @@ class DetectionLosses:
     
 
     @staticmethod
-    def build_preds_from_output(outputs):
+    def build_preds_from_output(outputs: torch.Tensor) -> list[dict]:
         """
     Builds list of predicted bounding boxes from model outputs.
 
@@ -107,11 +106,11 @@ class DetectionLosses:
         cx, cy, w, h, objectness, class_probs = decode_prediction(outputs)
         boxes = models_output_to_boxes(cx, cy, w, h)
 
-        B, S, _, _ = outputs.shape
+        batch_size, grid_size, _, _ = outputs.shape
 
         preds = []
 
-        for b in range(B):
+        for b in range(batch_size):
             mask = objectness[b] > 0.5
 
             if mask.sum() == 0:
@@ -136,7 +135,10 @@ class DetectionLosses:
         return preds
 
     @staticmethod
-    def match_prediction(preds, real, device, iou_threshold=0.5):
+    def match_prediction(preds: list[dict],
+                         real: list[dict],
+                         device: torch.device,
+                         iou_threshold: float=0.5) -> list:
         """
     Matches predicted bounding boxes with ground truth boxes using IoU.
 
@@ -148,6 +150,7 @@ class DetectionLosses:
 
     :param preds: List of predicted boxes (dict format with bbox, class, image_id).
     :param real: List of ground truth boxes (same format as preds, without score).
+    :param device: Device to use while computing.
     :param iou_threshold: Minimum IoU required to consider a prediction as correct.
     :return: List of integers (1 for True Positive, 0 for False Positive).
         """
@@ -178,8 +181,10 @@ class DetectionLosses:
         return matched
     
     @staticmethod
-    
-    def compute_ap(preds, real, device, iou_threshold=0.5):
+    def compute_ap(preds: list[dict],
+                   real: list[dict],
+                   device: torch.device,
+                   iou_threshold: float=0.5) -> float:
         """
     Computes Average Precision (AP) for a single IoU threshold.
 
@@ -189,6 +194,7 @@ class DetectionLosses:
 
     :param preds: List of predicted boxes (dict format with bbox, score, class, image_id).
     :param real: List of ground truth boxes (dict format with bbox, class, image_id).
+    :param device: Device to use while computing.
     :param iou_threshold: IoU threshold used to determine True Positives.
     :return: Average Precision (float) for given IoU threshold.
         """
@@ -197,22 +203,30 @@ class DetectionLosses:
 
         preds = sorted(preds, key=lambda x: x["score"], reverse=True)
 
-        tp = np.array(DetectionLosses.match_prediction(preds, real, device, iou_threshold))
-        fp = 1 - tp
+        tp = torch.tensor(
+            DetectionLosses.match_prediction(preds, real, device, iou_threshold),
+            dtype=torch.float32,
+            device=device
+        )
+        fp = 1.0 - tp
 
-        tp_c = np.cumsum(tp)
-        fp_c = np.cumsum(fp)
+        tp_c = torch.cumsum(tp, dim=0)
+        fp_c = torch.cumsum(fp, dim=0)
 
         recalls = tp_c / len(real)
         precisions = tp_c / (tp_c + fp_c + 1e-6)
 
-        recalls = np.concatenate(([0], recalls, [1]))
-        precisions = np.concatenate(([0], precisions, [0]))
+        zero = torch.zeros(1, device=device)
+        one = torch.ones(1, device=device)
+        recalls = torch.cat([zero, recalls, one])
+        precisions = torch.cat([zero, precisions, zero])
 
-        for i in range(len(precisions) - 1, 0, -1):
-            precisions[i-1] = max(precisions[i-1], precisions[i])
+        precisions = torch.flip(
+            torch.cummax(torch.flip(precisions, dims=[0]), dim=0).values,
+            dims=[0]
+        )
 
-        indices = np.where(recalls[1:] != recalls[:-1])[0]
-        ap = np.sum((recalls[indices+1] - recalls[indices]) * precisions[indices+1])
+        recall_diff = recalls[1:] - recalls[:-1]
+        ap = torch.sum(recall_diff * precisions[1:]).item()
 
         return ap

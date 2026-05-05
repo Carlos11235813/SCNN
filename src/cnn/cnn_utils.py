@@ -52,7 +52,9 @@ def non_maximum_suppression(boxes: torch.Tensor,
     
     return torch.tensor(keep, dtype=torch.long, device=boxes.device)
 
-def apply_nms(preds, device, iou_threshold=0.5):
+def apply_nms(preds: list[dict],
+              device: torch.device,
+              iou_threshold=0.5) -> list:
     """
     Applies Non-Maximum Suppression (NMS) to a list of predicted bounding boxes.
 
