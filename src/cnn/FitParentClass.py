@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import wandb
 import logging
+from fvcore.nn import FlopCountAnalysis
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
@@ -237,6 +238,9 @@ class FitParentClass(nn.Module):
 
         num_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         model_size = calculate_models_size(self)
+        sample_input, _ = next(iter(train_loader))
+        sample_input = sample_input[:1].to(next(self.parameters()).device)
+        flops = FlopCountAnalysis(self, sample_input).total()
 
         wandb_config["max epochs"] = epochs
         wandb_config["optimizer"] = optimizer
@@ -244,6 +248,8 @@ class FitParentClass(nn.Module):
         wandb_config["val_loader length (num batches)"] = len(val_loader)
         wandb_config["Number of trainable parameters"] = num_trainable
         wandb_config["Model size [MB]"] = model_size
+
+        wandb_config["FLOPs"] = flops
         wandb.init(
             project="SCNN",
             config=wandb_config
@@ -256,6 +262,7 @@ class FitParentClass(nn.Module):
         logger.info(f"Max epochs == {epochs}")
         logger.info(f"Number of trainable parameters == {num_trainable}")
         logger.info(f"Model size [MB] is {model_size / 8e6:.2f}")
+        logger.info(f"Model FLOPs == {flops}")
         logger.info(f"Train dataset len == {len(train_loader)}")
         logger.info(f"Validation dataset len == {len(val_loader)}")
         logger.info(f"Optimizer == {optimizer}")
