@@ -9,7 +9,7 @@ from src.cnn.DetectionLosses import DetectionLosses
 from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
-from src.cnn.cnn_utils import apply_nms
+from src.cnn.cnn_utils import apply_nms, calculate_models_size
 from src.wandb_logging.WandbLogger import WandbLogger
 
 logger = logging.getLogger(__name__)
@@ -235,13 +235,15 @@ class FitParentClass(nn.Module):
             for k in loss_weights.__dict__.keys():
                 wandb_config["initial " + k + " weight"] = loss_weights.__dict__[k]
 
-        num_treinable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        num_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_size = calculate_models_size(self)
 
         wandb_config["max epochs"] = epochs
         wandb_config["optimizer"] = optimizer
         wandb_config["train_loader length (num batches)"] = len(train_loader)
         wandb_config["val_loader length (num batches)"] = len(val_loader)
-        wandb_config["Number of trainable parameters"] = num_treinable
+        wandb_config["Number of trainable parameters"] = num_trainable
+        wandb_config["Model size [MB]"] = model_size
         wandb.init(
             project="SCNN",
             config=wandb_config
@@ -252,7 +254,8 @@ class FitParentClass(nn.Module):
         callbacks = [early_stopping, save_best]
         logger.info(f"Starting Model Training")
         logger.info(f"Max epochs == {epochs}")
-        logger.info(f"Number of trainable parameters == {num_treinable}")
+        logger.info(f"Number of trainable parameters == {num_trainable}")
+        logger.info(f"Model size [MB] is {model_size / 8e6:.2f}")
         logger.info(f"Train dataset len == {len(train_loader)}")
         logger.info(f"Validation dataset len == {len(val_loader)}")
         logger.info(f"Optimizer == {optimizer}")
