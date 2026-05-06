@@ -107,3 +107,10 @@ class WandbLogger:
             f'{process} mAP@50': mean_ap50,
             f'{process} mAP@75': mean_ap75,
         })
+
+    @staticmethod
+    def log_latency(process: str, latencies: list):
+        wandb.log({
+            f"{process} Latency Mean [ms]": sum(latencies) / len(latencies),
+            f"{process} Latency Std [ms]": torch.tensor(latencies).std().item(),
+        })

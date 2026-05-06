@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch import nn
 import wandb
@@ -46,7 +48,7 @@ class FitParentClass(nn.Module):
 
         cumulative_outputs = []
         cumulative_targets = []
-
+        latencies = []
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -55,7 +57,15 @@ class FitParentClass(nn.Module):
             images = images.to(device)
             optimizer.zero_grad()
 
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+
             outputs = self(images)
+
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            latencies.append((time.perf_counter() - t0) * 1000)
 
             targets = BuildTargets.build_targets(yolo,
                                           grid_h=outputs.size(1),
@@ -103,6 +113,8 @@ class FitParentClass(nn.Module):
                                classification_loss=total_classification,
                                localization_loss=total_localization,
                                objective_loss=total_objectness)
+
+        WandbLogger.log_latency(process="Train Weighted", latencies=latencies)
         return total_loss
 
     def _validate(self,
@@ -130,6 +142,7 @@ class FitParentClass(nn.Module):
 
         cumulative_outputs = []
         cumulative_targets = []
+        latencies = []
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -138,7 +151,16 @@ class FitParentClass(nn.Module):
         with torch.no_grad():
             for images, yolo in validation_dataloader:
                 images = images.to(device)
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
+
                 outputs = self(images)
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                latencies.append((time.perf_counter() - t0) * 1000)
 
                 targets = BuildTargets.build_targets(yolo,
                                               grid_h=outputs.size(1),
@@ -198,6 +220,8 @@ class FitParentClass(nn.Module):
                                localization_loss=total_localization,
                                classification_loss=total_classification,
                                objective_loss=total_objectness)
+
+        WandbLogger.log_latency(process="Validation Weighted", latencies=latencies)
 
         return total_loss
 
