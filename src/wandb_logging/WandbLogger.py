@@ -107,3 +107,18 @@ class WandbLogger:
             f'{process} mAP@50': mean_ap50,
             f'{process} mAP@75': mean_ap75,
         })
+
+    @staticmethod
+    def log_latency(process: str, latencies: list) -> None:
+        """
+        Computes and logs average latency and std of latencies.
+
+        :param process: Indicates type of losses, ex: process == \"Training Weighted\" or process == \"Validation Original\".
+        :param latencies:  list of latencies measured.
+        :return: None
+        """
+
+        wandb.log({
+            f"{process} Latency Mean [ms]": sum(latencies) / len(latencies),
+            f"{process} Latency Std [ms]": torch.tensor(latencies).std().item(),
+        })

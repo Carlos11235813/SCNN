@@ -1,7 +1,10 @@
+import time
+
 import torch
 from torch import nn
 import wandb
 import logging
+from fvcore.nn import FlopCountAnalysis
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
@@ -9,7 +12,7 @@ from src.cnn.DetectionLosses import DetectionLosses
 from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
-from src.cnn.cnn_utils import apply_nms
+from src.cnn.cnn_utils import apply_nms, calculate_models_size
 from src.wandb_logging.WandbLogger import WandbLogger
 
 logger = logging.getLogger(__name__)
@@ -45,7 +48,7 @@ class FitParentClass(nn.Module):
 
         cumulative_outputs = []
         cumulative_targets = []
-
+        latencies = []
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -54,7 +57,15 @@ class FitParentClass(nn.Module):
             images = images.to(device)
             optimizer.zero_grad()
 
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+
             outputs = self(images)
+
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            latencies.append((time.perf_counter() - t0) * 1000)
 
             targets = BuildTargets.build_targets(yolo,
                                           grid_h=outputs.size(1),
@@ -102,6 +113,8 @@ class FitParentClass(nn.Module):
                                classification_loss=total_classification,
                                localization_loss=total_localization,
                                objective_loss=total_objectness)
+
+        WandbLogger.log_latency(process="Train Weighted", latencies=latencies)
         return total_loss
 
     def _validate(self,
@@ -129,6 +142,7 @@ class FitParentClass(nn.Module):
 
         cumulative_outputs = []
         cumulative_targets = []
+        latencies = []
 
         user_defined = True if loss_weights is not None else False
         if not user_defined:
@@ -137,7 +151,16 @@ class FitParentClass(nn.Module):
         with torch.no_grad():
             for images, yolo in validation_dataloader:
                 images = images.to(device)
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
+
                 outputs = self(images)
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                latencies.append((time.perf_counter() - t0) * 1000)
 
                 targets = BuildTargets.build_targets(yolo,
                                               grid_h=outputs.size(1),
@@ -198,6 +221,8 @@ class FitParentClass(nn.Module):
                                classification_loss=total_classification,
                                objective_loss=total_objectness)
 
+        WandbLogger.log_latency(process="Validation Weighted", latencies=latencies)
+
         return total_loss
 
     def fit(self,
@@ -235,11 +260,20 @@ class FitParentClass(nn.Module):
             for k in loss_weights.__dict__.keys():
                 wandb_config["initial " + k + " weight"] = loss_weights.__dict__[k]
 
+        num_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_size = calculate_models_size(self)
+        sample_input, _ = next(iter(train_loader))
+        sample_input = sample_input[:1].to(next(self.parameters()).device)
+        flops = FlopCountAnalysis(self, sample_input).total()
+
         wandb_config["max epochs"] = epochs
         wandb_config["optimizer"] = optimizer
         wandb_config["train_loader length (num batches)"] = len(train_loader)
         wandb_config["val_loader length (num batches)"] = len(val_loader)
+        wandb_config["Number of trainable parameters"] = num_trainable
+        wandb_config["Model size [MB]"] = model_size
 
+        wandb_config["FLOPs"] = flops
         wandb.init(
             project="SCNN",
             config=wandb_config
@@ -250,6 +284,9 @@ class FitParentClass(nn.Module):
         callbacks = [early_stopping, save_best]
         logger.info(f"Starting Model Training")
         logger.info(f"Max epochs == {epochs}")
+        logger.info(f"Number of trainable parameters == {num_trainable}")
+        logger.info(f"Model size [MB] is {model_size / 8e6:.2f}")
+        logger.info(f"Model FLOPs == {flops}")
         logger.info(f"Train dataset len == {len(train_loader)}")
         logger.info(f"Validation dataset len == {len(val_loader)}")
         logger.info(f"Optimizer == {optimizer}")

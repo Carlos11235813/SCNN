@@ -93,3 +93,21 @@ def apply_nms(preds: list[dict],
             final_preds.append(cls_preds[i.item()])
 
     return final_preds
+
+def calculate_models_size(model: torch.nn.Module) -> float:
+    """
+    The function checks the size of model passed as argument in MB, and returns it as float.
+
+    :param model: Pytorch model
+    :return model_size: indicating number of model parameters in MB
+    """
+
+    model_size = 0
+
+    for param in model.parameters():
+        if param.data.is_floating_point():
+            model_size += param.numel() * torch.finfo(param.data.dtype).bits
+        else:
+            model_size += param.numel() * torch.iinfo(param.data.dtype).bits
+
+    return model_size
