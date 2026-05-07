@@ -1,0 +1,71 @@
+import torch
+import torch.nn as nn
+from src.cnn.FitParentClass import FitParentClass
+
+class ResBlock(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(channels)
+        )
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.relu(x + self.conv(x))
+
+class SPPF(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, k: int = 5):
+        super().__init__()
+        c_ = in_channels // 2
+        self.cv1 = nn.Conv2d(in_channels, c_, 1)
+        self.cv2 = nn.Conv2d(c_ * 4, out_channels, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.cv1(x)
+        y1 = self.m(x)
+        y2 = self.m(y1)
+        return self.cv2(torch.cat((x, y1, y2, self.m(y2)), 1))
+
+class VisDroneResNet(FitParentClass):
+    def __init__(self, num_classes: int = 10, boxes_per_cell: int = 1):
+        super().__init__()
+        # Number of output channels per grid cell: 1 (obj) + 4 (bbox) + 10 (classes) = 15
+        self.out_channels_per_cell = (1 + 4)*boxes_per_cell + num_classes
+        
+        # Backbone: grid reduction by 8 times
+        self.model = nn.Sequential(
+            # Input: [Batch, 3, H, W]
+            nn.Conv2d(3, 32, 3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            
+            nn.Conv2d(32, 64, 3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            ResBlock(64),
+            
+            nn.Conv2d(64, 128, 3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            ResBlock(128),
+            ResBlock(128),
+            
+            SPPF(128, 256), # Increase the number of channels for better feature representation
+            
+            # Detection head: 1x1 convolution mapping channels to the output format
+            nn.Conv2d(256, self.out_channels_per_cell, kernel_size=1)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Output from convolution: [Batch, 15, S, S]
+        out = self.model(x)
+        
+        # Changing the order of dimensions to: [Batch, S, S, 15]
+        out = out.permute(0, 2, 3, 1).contiguous()
+        
+        return out
