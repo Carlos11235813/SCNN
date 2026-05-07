@@ -105,7 +105,7 @@ class FitParentClass(nn.Module):
         classify_out = torch.cat(cumulative_outputs, dim=0)
         classify_targets = torch.cat(cumulative_targets, dim=0)
 
-        WandbLogger.precision_recall_f1(process="Validation Weighted",
+        WandbLogger.precision_recall_f1(process="Train Weighted",
                                         classify_out=classify_out,
                                         classify_tar=classify_targets)
 
