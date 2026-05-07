@@ -4,6 +4,13 @@ from torchvision import models
 from src.cnn.FitParentClass import FitParentClass
 
 class VisDroneMobileNet(FitParentClass):
+    """
+    YOLOv1-style detector built on a MobileNetV3-Small backbone.
+
+    Args:
+        B_boxes (int): Number of bounding boxes per grid cell. Defaults to 1.
+        C (int): Number of object classes. Defaults to 10.
+    """
     def __init__(self, B_boxes: int = 1, C: int = 10):
 
         super().__init__()
