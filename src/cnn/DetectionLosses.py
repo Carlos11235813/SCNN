@@ -35,7 +35,10 @@ class DetectionLosses:
 
         if loc_loss_iou:
             if localization_out.numel() == 0:
-                loss_localization = torch.tensor(0.0)
+                loss_localization = torch.tensor(
+                    0.0,
+                    device=outputs.device,
+                    dtype=outputs.dtype)
             else:
                 iou = DetectionLosses.compute_iou(localization_out, localization_tar)
                 loss_localization = 1 - iou.mean()
@@ -79,6 +82,8 @@ class DetectionLosses:
 
         area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
         area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
+
+        eps = torch.tensor(eps, device=boxes1.device, dtype=boxes1.dtype)
 
         union = area1 + area2 - inter + eps
 
@@ -138,7 +143,8 @@ class DetectionLosses:
     def match_prediction(preds: list[dict],
                          real: list[dict],
                          device: torch.device,
-                         iou_threshold: float=0.5) -> list:
+                         iou_threshold: float=0.5,
+                         dtype=torch.float32) -> list:
         """
     Matches predicted bounding boxes with ground truth boxes using IoU.
 
@@ -160,7 +166,7 @@ class DetectionLosses:
         for pred in preds:
             best_iou=0
             best_reals=-1
-            pred_box = torch.tensor([pred["bbox"]], dtype=torch.float32, device=device)
+            pred_box = torch.tensor([pred["bbox"]], dtype=dtype, device=device)
             for i, reals  in  enumerate(real):
                 if i in used:
                     continue
@@ -168,7 +174,7 @@ class DetectionLosses:
                     continue
                 if pred["image_id"] != reals["image_id"]:
                     continue
-                gt_box = torch.tensor([reals["bbox"]], dtype=torch.float32, device=device)
+                gt_box = torch.tensor([reals["bbox"]], dtype=dtype, device=device)
                 score = DetectionLosses.compute_iou(pred_box, gt_box)[0].item()
                 if score > best_iou :
                     best_iou=score
@@ -184,7 +190,8 @@ class DetectionLosses:
     def compute_ap(preds: list[dict],
                    real: list[dict],
                    device: torch.device,
-                   iou_threshold: float=0.5) -> float:
+                   iou_threshold: float=0.5,
+                   dtype=torch.float32) -> float:
         """
     Computes Average Precision (AP) for a single IoU threshold.
 
@@ -205,7 +212,7 @@ class DetectionLosses:
 
         tp = torch.tensor(
             DetectionLosses.match_prediction(preds, real, device, iou_threshold),
-            dtype=torch.float32,
+            dtype=dtype,
             device=device
         )
         fp = 1.0 - tp
@@ -216,8 +223,8 @@ class DetectionLosses:
         recalls = tp_c / len(real)
         precisions = tp_c / (tp_c + fp_c + 1e-6)
 
-        zero = torch.zeros(1, device=device)
-        one = torch.ones(1, device=device)
+        zero = torch.zeros(1, device=device, dtype=dtype)
+        one = torch.ones(1, device=device, dtype=dtype)
         recalls = torch.cat([zero, recalls, one])
         precisions = torch.cat([zero, precisions, zero])
 

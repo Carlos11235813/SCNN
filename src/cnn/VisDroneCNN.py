@@ -6,7 +6,7 @@ from src.cnn.FitParentClass import FitParentClass
 logger = logging.getLogger(__name__)
 
 class VisDroneCNN(FitParentClass):
-    def __init__(self, S: int = 8, B_boxes: int = 1, C: int = 10):
+    def __init__(self, S: int = 8, B_boxes: int = 1, C: int = 10, dtype=torch.float32):
         """
         S: grid size
         B_boxes: number of bounding boxes per grid cell (most models only use 1)
@@ -17,6 +17,7 @@ class VisDroneCNN(FitParentClass):
         self.S = S
         self.B_boxes = B_boxes
         self.C = C
+        self.dtype=dtype
         
         self.output_dim = self.B_boxes * 5 + self.C
 
@@ -44,6 +45,7 @@ class VisDroneCNN(FitParentClass):
             nn.LeakyReLU(0.1),
             nn.Conv2d(256, self.output_dim, kernel_size=1)
         )
+        self.to(dtype=self.dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.backbone(x)
