@@ -276,7 +276,7 @@ class FitParentClass(nn.Module):
         wandb_config["train_loader length (num batches)"] = len(train_loader)
         wandb_config["val_loader length (num batches)"] = len(val_loader)
         wandb_config["Number of trainable parameters"] = num_trainable
-        wandb_config["Model size [MB]"] = model_size
+        wandb_config["Model size [MB]"] = f"{model_size / 8e6:.2f}"
 
         wandb_config["FLOPs"] = flops
         wandb.init(
