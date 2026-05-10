@@ -1,9 +1,11 @@
 from src.detection_demo.demo_utils import (decode_prediction, models_output_to_boxes,
                                            filter_predictions, draw_predictions)
+import logging
 import torch
 import os
 from PIL import Image
 
+logger = logging.getLogger(__name__)
 
 class VisualizePrediction:
 
@@ -15,6 +17,7 @@ class VisualizePrediction:
                  conf_threshold: float = 0.6,
                  class_names: list = None,
                  colors: list = None):
+        logger.info('Initializing VisualizePrediction class')
         self.output_batch_prediction = output_batch_prediction
         self.img_w = img_w
         self.img_h = img_h
@@ -22,6 +25,7 @@ class VisualizePrediction:
         self.input_image_batch = input_image_batch
         self.prediction_images: list[Image.Image] = []
         if class_names is None:
+            logger.info('Initializing default class names [Names for VisDrone dataset]')
             self.class_names = [
                 "pedestrian", "people", "bicycle", "car", "van",
                 "truck", "tricycle", "awning-tricycle", "bus", "motor"
@@ -39,12 +43,14 @@ class VisualizePrediction:
             self.colors = colors
 
         self._postprocess()
+
     def _postprocess(self) -> None:
         """
         The method is used to postprocess the output of the model.
         And to draw the predictions. The final images are saved as class field, and can be printed later.
         :return: None
         """
+        logger.info('Attempting to postprocess data for plotting')
         bx, by, bw, bh, obj, cls = decode_prediction(self.output_batch_prediction)
         boxes = models_output_to_boxes(bx,
                                        by,
@@ -79,6 +85,7 @@ class VisualizePrediction:
         :param output_dir: Path to the folder where images will be saved.
         :return: None
         """
+        logger.info('Attempting to save all images to the specified folder')
         os.makedirs(output_dir, exist_ok=True)
         for i, img in enumerate(self.prediction_images):
             img.save(os.path.join(output_dir, f"prediction_{i}.png"))

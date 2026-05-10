@@ -50,4 +50,64 @@ def non_maximum_suppression(boxes: torch.Tensor,
         iou = DetectionLosses.compute_iou(current_box, remaining_boxes)
         indices = indices[1:][iou < iou_threshold]
     
-    return torch.tensor(keep, dtype=torch.long)
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
+
+def apply_nms(preds: list[dict],
+              device: torch.device,
+              iou_threshold=0.5) -> list:
+    """
+    Applies Non-Maximum Suppression (NMS) to a list of predicted bounding boxes.
+
+    The function groups predictions by class and removes overlapping boxes based on
+    their Intersection over Union (IoU) and confidence scores. For each class, only
+    the highest-scoring boxes are kept while suppressing redundant overlapping ones.
+
+    :param preds: List of predicted boxes, where each element is a dictionary:
+              {
+                  "bbox": [x1, y1, x2, y2],
+                  "score": confidence score,
+                  "class": predicted class index,
+                  "image_id": index of image in batch
+              }
+    :param device: Torch device (e.g., "cpu" or "cuda") used for tensor operations.
+    :param iou_threshold: IoU threshold above which boxes are considered overlapping
+                      and suppressed.
+    :return: Filtered list of predictions after applying NMS, in the same format as input.
+    """
+    final_preds = []
+
+    classes = set(p["class"] for p in preds)
+
+    for cls in classes:
+        cls_preds = [p for p in preds if p["class"] == cls]
+
+        if len(cls_preds) == 0:
+            continue
+
+        boxes = torch.tensor([p["bbox"] for p in cls_preds], dtype=torch.float32, device=device)
+        scores = torch.tensor([p["score"] for p in cls_preds], dtype=torch.float32, device=device)
+
+        keep = non_maximum_suppression(boxes, scores, iou_threshold)
+
+        for i in keep:
+            final_preds.append(cls_preds[i.item()])
+
+    return final_preds
+
+def calculate_models_size(model: torch.nn.Module) -> float:
+    """
+    The function checks the size of model passed as argument in MB, and returns it as float.
+
+    :param model: Pytorch model
+    :return model_size: indicating number of model parameters in MB
+    """
+
+    model_size = 0
+
+    for param in model.parameters():
+        if param.data.is_floating_point():
+            model_size += param.numel() * torch.finfo(param.data.dtype).bits
+        else:
+            model_size += param.numel() * torch.iinfo(param.data.dtype).bits
+
+    return model_size

@@ -7,7 +7,8 @@ class BuildTargets:
                        grid_h: int,
                        grid_w: int,
                        num_classes: int,
-                       device: torch.device) -> torch.Tensor:
+                       device: torch.device,
+                       dtype=torch.float32) -> torch.Tensor:
         """
         Transforms batch of Yolo outputs into target boxes.
         That are compatible with models output.
@@ -24,7 +25,8 @@ class BuildTargets:
                               grid_h,
                               grid_w,
                               5 + num_classes,
-                              device=device)
+                              device=device,
+                              dtype=dtype)
         for idx, yolo in enumerate(yolo_batch):
             boxes = yolo.boxes.to(device)
             labels = yolo.labels.to(device)
@@ -35,5 +37,5 @@ class BuildTargets:
             targets[idx, cord_y, cord_x, 0] = 1.0
 
             targets[idx, cord_y, cord_x, 1:5] = boxes
-            targets[idx, cord_y, cord_x, 5:] = torch.eye(10, device=device)[labels]
+            targets[idx, cord_y, cord_x, 5:] = torch.eye(10, device=device,dtype=dtype)[labels]
         return targets

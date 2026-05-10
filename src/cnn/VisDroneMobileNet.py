@@ -11,11 +11,12 @@ class VisDroneMobileNet(FitParentClass):
         B_boxes (int): Number of bounding boxes per grid cell. Defaults to 1.
         C (int): Number of object classes. Defaults to 10.
     """
-    def __init__(self, B_boxes: int = 1, C: int = 10):
+    def __init__(self, B_boxes: int = 1, C: int = 10, dtype=torch.float32):
 
         super().__init__()
         self.C = C
         self.B = B_boxes
+        self.dtype=dtype
 
         out_channels = (self.B * 5) + self.C
 
@@ -29,6 +30,7 @@ class VisDroneMobileNet(FitParentClass):
             nn.Hardswish(),
             nn.Conv2d(256, out_channels, kernel_size=1)
         )
+        self.to(dtype=self.dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.backbone(x)
