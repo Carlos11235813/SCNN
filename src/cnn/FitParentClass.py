@@ -54,7 +54,7 @@ class FitParentClass(nn.Module):
         if not user_defined:
             loss_weights = LossWeights()
         for images, yolo in dataloader:
-            images = images.to(device)
+            images = images.to(device=device, dtype=self.dtype)
             optimizer.zero_grad()
 
             if device.type == "cuda":
@@ -71,7 +71,8 @@ class FitParentClass(nn.Module):
                                           grid_h=outputs.size(1),
                                           grid_w=outputs.size(2),
                                           num_classes=10,
-                                          device=device)
+                                          device=device,
+                                          dtype=self.dtype)
 
 
             loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
@@ -150,7 +151,7 @@ class FitParentClass(nn.Module):
 
         with torch.no_grad():
             for images, yolo in validation_dataloader:
-                images = images.to(device)
+                images = images.to(device=device, dtype=self.dtype)
 
                 if device.type == "cuda":
                     torch.cuda.synchronize()
@@ -166,7 +167,8 @@ class FitParentClass(nn.Module):
                                               grid_h=outputs.size(1),
                                               grid_w=outputs.size(2),
                                               num_classes=10,
-                                              device=device
+                                              device=device,
+                                              dtype=self.dtype
                                               )
                 loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                             outputs=outputs,
@@ -263,7 +265,10 @@ class FitParentClass(nn.Module):
         num_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         model_size = calculate_models_size(self)
         sample_input, _ = next(iter(train_loader))
-        sample_input = sample_input[:1].to(next(self.parameters()).device)
+        sample_input = sample_input[:1].to(
+            device=next(self.parameters()).device,
+            dtype=self.dtype
+            )
         flops = FlopCountAnalysis(self, sample_input).total()
 
         wandb_config["max epochs"] = epochs
@@ -271,7 +276,7 @@ class FitParentClass(nn.Module):
         wandb_config["train_loader length (num batches)"] = len(train_loader)
         wandb_config["val_loader length (num batches)"] = len(val_loader)
         wandb_config["Number of trainable parameters"] = num_trainable
-        wandb_config["Model size [MB]"] = model_size
+        wandb_config["Model size [MB]"] = f"{model_size / 8e6:.2f}"
 
         wandb_config["FLOPs"] = flops
         wandb.init(
