@@ -3,7 +3,8 @@ import torch.nn as nn
 from src.cnn.FitParentClass import FitParentClass
 
 class DecoupledHead(nn.Module):
-    def __init__(self, in_channels, num_classes=10):
+    # A decoupled head for separate classification and regression paths
+    def __init__(self, in_channels: int, num_classes: int=10):
         super().__init__()
         # Combined preprocessing for better feature extraction
         self.stem = nn.Sequential(
@@ -28,7 +29,7 @@ class DecoupledHead(nn.Module):
             nn.Conv2d(in_channels, 1 + 4, 1) # Objectness (1) + Box (4)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.stem(x)
         cls_score = self.cls_branch(x)
         reg_score = self.reg_branch(x)
@@ -36,7 +37,7 @@ class DecoupledHead(nn.Module):
         # Joining the tensors
         return torch.cat([reg_score, cls_score], dim=1)
 
-def channel_shuffle(x, groups):
+def channel_shuffle(x: torch.Tensor, groups: int) -> torch.Tensor:
     """Shuffling channels for ShuffleNet"""
     batch_size, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
@@ -49,8 +50,8 @@ def channel_shuffle(x, groups):
     return x
 
 class ShuffleUnit(nn.Module):
-    """Basic ShuffleNet Unit"""
-    def __init__(self, in_channels, out_channels, stride):
+    # A single ShuffleNet unit that performs channel splitting, depthwise convolution, and channel shuffling
+    def __init__(self, in_channels: int, out_channels: int, stride: int):
         super().__init__()
         self.stride = stride
         branch_features = out_channels // 2
@@ -99,13 +100,14 @@ class ShuffleUnit(nn.Module):
         return channel_shuffle(out, 2)
 
 class VisDroneShuffleNet(FitParentClass):
-    def __init__(self, num_classes=10):
+    # A ShuffleNet-based architecture for VisDrone object detection
+    def __init__(self, num_classes=10, boxes_per_cell: int = 1, dtype=torch.float32, in_channels: int = 3):
         super().__init__()
 
-        self.out_channels_per_cell = 1 + 4 + num_classes
-        
+        self.out_channels_per_cell = (1 + 4) * boxes_per_cell + num_classes
+
         self.stem = nn.Sequential(
-            nn.Conv2d(3, 24, 3, stride=2, padding=1, bias=False),
+            nn.Conv2d(in_channels, 24, 3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(24),
             nn.ReLU(inplace=True)
         )

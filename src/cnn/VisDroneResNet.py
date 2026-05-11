@@ -3,6 +3,7 @@ import torch.nn as nn
 from src.cnn.FitParentClass import FitParentClass
 
 class ResBlock(nn.Module):
+    # A simple residual block with two convolutional layers and a skip connection
     def __init__(self, channels: int):
         super().__init__()
         self.conv = nn.Sequential(
@@ -18,6 +19,7 @@ class ResBlock(nn.Module):
         return self.relu(x + self.conv(x))
 
 class SPPF(nn.Module):
+    # Spatial Pyramid Pooling - Fast (SPPF) module for multi-scale feature extraction
     def __init__(self, in_channels: int, out_channels: int, k: int = 5):
         super().__init__()
         c_ = in_channels // 2
@@ -32,7 +34,8 @@ class SPPF(nn.Module):
         return self.cv2(torch.cat((x, y1, y2, self.m(y2)), 1))
 
 class VisDroneResNet(FitParentClass):
-    def __init__(self, num_classes: int = 10, boxes_per_cell: int = 1):
+    # A ResNet-based architecture for VisDrone object detection
+    def __init__(self, num_classes: int = 10, boxes_per_cell: int = 1, dtype=torch.float32, in_channels: int = 3):
         super().__init__()
         # Number of output channels per grid cell: 1 (obj) + 4 (bbox) + 10 (classes) = 15
         self.out_channels_per_cell = (1 + 4)*boxes_per_cell + num_classes
@@ -40,7 +43,7 @@ class VisDroneResNet(FitParentClass):
         # Backbone: grid reduction by 8 times
         self.model = nn.Sequential(
             # Input: [Batch, 3, H, W]
-            nn.Conv2d(3, 32, 3, stride=2, padding=1),
+            nn.Conv2d(in_channels, 32, 3, stride=2, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             
