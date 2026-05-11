@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
+import logging
 from src.cnn.FitParentClass import FitParentClass
+
+logger = logging.getLogger(__name__)
 
 class DecoupledHead(nn.Module):
     # A decoupled head for separate classification and regression paths
@@ -102,6 +105,7 @@ class ShuffleUnit(nn.Module):
 class VisDroneShuffleNet(FitParentClass):
     # A ShuffleNet-based architecture for VisDrone object detection
     def __init__(self, num_classes=10, boxes_per_cell: int = 1, dtype=torch.float32, in_channels: int = 3):
+        logger.info(f"VisDroneShuffleNet object initialization")
         super().__init__()
 
         self.out_channels_per_cell = (1 + 4) * boxes_per_cell + num_classes

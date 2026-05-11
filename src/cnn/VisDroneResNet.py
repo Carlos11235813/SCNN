@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
+import logging
 from src.cnn.FitParentClass import FitParentClass
+
+logger = logging.getLogger(__name__)
 
 class ResBlock(nn.Module):
     # A simple residual block with two convolutional layers and a skip connection
@@ -36,6 +39,7 @@ class SPPF(nn.Module):
 class VisDroneResNet(FitParentClass):
     # A ResNet-based architecture for VisDrone object detection
     def __init__(self, num_classes: int = 10, boxes_per_cell: int = 1, dtype=torch.float32, in_channels: int = 3):
+        logger.info(f"VisDroneResNet object initialization")
         super().__init__()
         # Number of output channels per grid cell: 1 (obj) + 4 (bbox) + 10 (classes) = 15
         self.out_channels_per_cell = (1 + 4)*boxes_per_cell + num_classes
@@ -63,7 +67,8 @@ class VisDroneResNet(FitParentClass):
             # Detection head: 1x1 convolution mapping channels to the output format
             nn.Conv2d(256, self.out_channels_per_cell, kernel_size=1)
         )
-
+        self.to(dtype=self.dtype)
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Output from convolution: [Batch, 15, S, S]
         out = self.model(x)
