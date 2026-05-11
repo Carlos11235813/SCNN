@@ -1,5 +1,5 @@
 import time
-
+from rich.progress import Progress
 import torch
 from torch import nn
 import wandb
@@ -50,59 +50,65 @@ class FitParentClass(nn.Module):
         cumulative_targets = []
         latencies = []
 
+        num_batches = len(dataloader)
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
-        for images, yolo in dataloader:
-            images = images.to(device=device, dtype=self.dtype)
-            optimizer.zero_grad()
+        with Progress() as p:
+            t = p.add_task("Processing Training Epoch ...", total=num_batches)
+            for images, yolo in dataloader:
 
-            if device.type == "cuda":
-                torch.cuda.synchronize()
-            t0 = time.perf_counter()
+                images = images.to(device=device, dtype=self.dtype)
+                optimizer.zero_grad()
 
-            outputs = self(images)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
 
-            if device.type == "cuda":
-                torch.cuda.synchronize()
-            latencies.append((time.perf_counter() - t0) * 1000)
+                outputs = self(images)
 
-            targets = BuildTargets.build_targets(yolo,
-                                          grid_h=outputs.size(1),
-                                          grid_w=outputs.size(2),
-                                          num_classes=10,
-                                          device=device,
-                                          dtype=self.dtype)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                latencies.append((time.perf_counter() - t0) * 1000)
 
-
-            loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
-                                                                                                        outputs=outputs,
-                                                                                                        targets=targets)
-            obj_mask = targets[:, :, :, 0] == 1
-            cumulative_outputs.append(outputs[obj_mask][..., 5:])
-            cumulative_targets.append(targets[obj_mask][..., 5:])
-
-            total_objectness += loss_objectness.item()
-            total_localization += loss_localization.item()
-            total_classification += loss_classification.item()
-
-            if not user_defined:
-                loss_weights.auto_weights(loss_objectness,
-                                          loss_localization,
-                                          loss_classification)
-
-            loss_objectness = loss_weights.objectness * loss_objectness
-            loss_localization = loss_weights.localization * loss_localization
-            loss_classification = loss_weights.classification * loss_classification
+                targets = BuildTargets.build_targets(yolo,
+                                              grid_h=outputs.size(1),
+                                              grid_w=outputs.size(2),
+                                              num_classes=10,
+                                              device=device,
+                                              dtype=self.dtype)
 
 
-            loss = loss_objectness + loss_localization + loss_classification
+                loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
+                                                                                                            outputs=outputs,
+                                                                                                            targets=targets)
+                obj_mask = targets[:, :, :, 0] == 1
+                cumulative_outputs.append(outputs[obj_mask][..., 5:])
+                cumulative_targets.append(targets[obj_mask][..., 5:])
 
-            loss.backward()
-            optimizer.step()
+                total_objectness += loss_objectness.item()
+                total_localization += loss_localization.item()
+                total_classification += loss_classification.item()
 
-            total_loss += loss.item()
+                if not user_defined:
+                    loss_weights.auto_weights(loss_objectness,
+                                              loss_localization,
+                                              loss_classification)
 
+                loss_objectness = loss_weights.objectness * loss_objectness
+                loss_localization = loss_weights.localization * loss_localization
+                loss_classification = loss_weights.classification * loss_classification
+
+
+                loss = loss_objectness + loss_localization + loss_classification
+
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+                p.update(t, advance=1)
         classify_out = torch.cat(cumulative_outputs, dim=0)
         classify_targets = torch.cat(cumulative_targets, dim=0)
 
@@ -145,65 +151,71 @@ class FitParentClass(nn.Module):
         cumulative_targets = []
         latencies = []
 
+        num_batches = len(validation_dataloader)
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
 
         with torch.no_grad():
-            for images, yolo in validation_dataloader:
-                images = images.to(device=device, dtype=self.dtype)
+            with Progress() as p:
+                t = p.add_task("Processing Validation Epoch ...", total = num_batches)
+                for images, yolo in validation_dataloader:
+                    images = images.to(device=device, dtype=self.dtype)
 
-                if device.type == "cuda":
-                    torch.cuda.synchronize()
-                t0 = time.perf_counter()
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()
+                    t0 = time.perf_counter()
 
-                outputs = self(images)
+                    outputs = self(images)
 
-                if device.type == "cuda":
-                    torch.cuda.synchronize()
-                latencies.append((time.perf_counter() - t0) * 1000)
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()
+                    latencies.append((time.perf_counter() - t0) * 1000)
 
-                targets = BuildTargets.build_targets(yolo,
-                                              grid_h=outputs.size(1),
-                                              grid_w=outputs.size(2),
-                                              num_classes=10,
-                                              device=device,
-                                              dtype=self.dtype
-                                              )
-                loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
-                                                                                            outputs=outputs,
-                                                                                            targets=targets)
-                obj_mask = targets[:, :, :, 0] == 1
-                cumulative_outputs.append(outputs[obj_mask][..., 5:])
-                cumulative_targets.append(targets[obj_mask][..., 5:])
+                    targets = BuildTargets.build_targets(yolo,
+                                                  grid_h=outputs.size(1),
+                                                  grid_w=outputs.size(2),
+                                                  num_classes=10,
+                                                  device=device,
+                                                  dtype=self.dtype
+                                                  )
+                    loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
+                                                                                                outputs=outputs,
+                                                                                                targets=targets)
+                    obj_mask = targets[:, :, :, 0] == 1
+                    cumulative_outputs.append(outputs[obj_mask][..., 5:])
+                    cumulative_targets.append(targets[obj_mask][..., 5:])
 
-                if not user_defined:
-                    loss_weights.auto_weights(loss_objectness,
-                                              loss_localization,
-                                              loss_classification)
+                    if not user_defined:
+                        loss_weights.auto_weights(loss_objectness,
+                                                  loss_localization,
+                                                  loss_classification)
 
-                loss_objectness = loss_weights.objectness * loss_objectness
-                loss_localization = loss_weights.localization * loss_localization
-                loss_classification = loss_weights.classification * loss_classification
+                    loss_objectness = loss_weights.objectness * loss_objectness
+                    loss_localization = loss_weights.localization * loss_localization
+                    loss_classification = loss_weights.classification * loss_classification
 
-                total_objectness += loss_objectness.item()
-                total_localization += loss_localization.item()
-                total_classification += loss_classification.item()
+                    total_objectness += loss_objectness.item()
+                    total_localization += loss_localization.item()
+                    total_classification += loss_classification.item()
 
-                loss = loss_objectness + loss_localization + loss_classification
-                total_loss += loss.item()
+                    loss = loss_objectness + loss_localization + loss_classification
+                    total_loss += loss.item()
 
-                preds_per_image = []
-                real_per_image = []
-                for b, (out, target) in enumerate(zip(outputs, yolo)):
-                    preds = DetectionLosses.build_preds_from_output(out.unsqueeze(0))
-                    preds = apply_nms(preds, device)
-                    real = [
-                        {"bbox": box.tolist(), "class": label.item(), "image_id": 0}
-                        for box, label in zip(target.boxes, target.labels)
-                    ]
-                    preds_per_image.append(preds)
-                    real_per_image.append(real)
+                    preds_per_image = []
+                    real_per_image = []
+                    for b, (out, target) in enumerate(zip(outputs, yolo)):
+                        preds = DetectionLosses.build_preds_from_output(out.unsqueeze(0))
+                        preds = apply_nms(preds, device)
+                        real = [
+                            {"bbox": box.tolist(), "class": label.item(), "image_id": 0}
+                            for box, label in zip(target.boxes, target.labels)
+                        ]
+                        preds_per_image.append(preds)
+                        real_per_image.append(real)
+
+                    p.update(t, advance=1)
 
 
         classify_out = torch.cat(cumulative_outputs, dim=0)
