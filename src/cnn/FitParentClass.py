@@ -1,6 +1,10 @@
+import time
+
 import torch
 from torch import nn
 import wandb
+import logging
+from fvcore.nn import FlopCountAnalysis
 
 from src.cnn.BuildTargets import BuildTargets
 from src.cnn.DetectionLosses import DetectionLosses
@@ -8,6 +12,10 @@ from src.cnn.DetectionLosses import DetectionLosses
 from src.callbacks.EarlyStoping import EarlyStopping
 from src.callbacks.SaveBest import SaveBest
 from src.models.LossWeights import LossWeights
+from src.cnn.cnn_utils import apply_nms, calculate_models_size
+from src.wandb_logging.WandbLogger import WandbLogger
+
+logger = logging.getLogger(__name__)
 
 class FitParentClass(nn.Module):
     def __init__(self):
@@ -37,25 +45,42 @@ class FitParentClass(nn.Module):
         total_localization = 0
         total_classification = 0
 
+
+        cumulative_outputs = []
+        cumulative_targets = []
+        latencies = []
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
         for images, yolo in dataloader:
-            images = images.to(device)
+            images = images.to(device=device, dtype=self.dtype)
             optimizer.zero_grad()
 
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+
             outputs = self(images)
+
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            latencies.append((time.perf_counter() - t0) * 1000)
 
             targets = BuildTargets.build_targets(yolo,
                                           grid_h=outputs.size(1),
                                           grid_w=outputs.size(2),
                                           num_classes=10,
-                                          device=device)
+                                          device=device,
+                                          dtype=self.dtype)
 
 
             loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                                         outputs=outputs,
                                                                                                         targets=targets)
+            obj_mask = targets[:, :, :, 0] == 1
+            cumulative_outputs.append(outputs[obj_mask][..., 5:])
+            cumulative_targets.append(targets[obj_mask][..., 5:])
 
             total_objectness += loss_objectness.item()
             total_localization += loss_localization.item()
@@ -78,12 +103,19 @@ class FitParentClass(nn.Module):
 
             total_loss += loss.item()
 
-        wandb.log({"Training Loss Objectness": total_objectness,
-                   "Training Loss Localization": total_localization,
-                   "Training Loss Classification": total_classification,
-                   "Training Total Loss": total_loss})
+        classify_out = torch.cat(cumulative_outputs, dim=0)
+        classify_targets = torch.cat(cumulative_targets, dim=0)
 
+        WandbLogger.precision_recall_f1(process="Train Weighted",
+                                        classify_out=classify_out,
+                                        classify_tar=classify_targets)
 
+        WandbLogger.log_losses(process="Train Weighted",
+                               classification_loss=total_classification,
+                               localization_loss=total_localization,
+                               objective_loss=total_objectness)
+
+        WandbLogger.log_latency(process="Train Weighted", latencies=latencies)
         return total_loss
 
     def _validate(self,
@@ -109,24 +141,42 @@ class FitParentClass(nn.Module):
         total_localization = 0
         total_classification = 0
 
+        cumulative_outputs = []
+        cumulative_targets = []
+        latencies = []
+
         user_defined = True if loss_weights is not None else False
         if not user_defined:
             loss_weights = LossWeights()
 
         with torch.no_grad():
             for images, yolo in validation_dataloader:
-                images = images.to(device)
+                images = images.to(device=device, dtype=self.dtype)
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
+
                 outputs = self(images)
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                latencies.append((time.perf_counter() - t0) * 1000)
 
                 targets = BuildTargets.build_targets(yolo,
                                               grid_h=outputs.size(1),
                                               grid_w=outputs.size(2),
                                               num_classes=10,
-                                              device=device
+                                              device=device,
+                                              dtype=self.dtype
                                               )
                 loss_objectness, loss_localization, loss_classification = DetectionLosses.compute_basic_loss(
                                                                                             outputs=outputs,
                                                                                             targets=targets)
+                obj_mask = targets[:, :, :, 0] == 1
+                cumulative_outputs.append(outputs[obj_mask][..., 5:])
+                cumulative_targets.append(targets[obj_mask][..., 5:])
+
                 if not user_defined:
                     loss_weights.auto_weights(loss_objectness,
                                               loss_localization,
@@ -142,10 +192,38 @@ class FitParentClass(nn.Module):
 
                 loss = loss_objectness + loss_localization + loss_classification
                 total_loss += loss.item()
-        wandb.log({"Val Loss Objectness": total_objectness,
-                   "Val Loss Localization": total_localization,
-                   "Val Loss Classification": total_classification,
-                   "Validation Total Loss": total_loss})
+
+                preds_per_image = []
+                real_per_image = []
+                for b, (out, target) in enumerate(zip(outputs, yolo)):
+                    preds = DetectionLosses.build_preds_from_output(out.unsqueeze(0))
+                    preds = apply_nms(preds, device)
+                    real = [
+                        {"bbox": box.tolist(), "class": label.item(), "image_id": 0}
+                        for box, label in zip(target.boxes, target.labels)
+                    ]
+                    preds_per_image.append(preds)
+                    real_per_image.append(real)
+
+
+        classify_out = torch.cat(cumulative_outputs, dim=0)
+        classify_targets = torch.cat(cumulative_targets, dim=0)
+
+        WandbLogger.ap_metrics(process="Validation Weighted",
+                               preds_per_image=preds_per_image,
+                               real_per_image=real_per_image,
+                               device=device)
+
+        WandbLogger.precision_recall_f1(process="Validation Weighted",
+                                        classify_out=classify_out,
+                                        classify_tar=classify_targets)
+
+        WandbLogger.log_losses(process="Validation Weighted",
+                               localization_loss=total_localization,
+                               classification_loss=total_classification,
+                               objective_loss=total_objectness)
+
+        WandbLogger.log_latency(process="Validation Weighted", latencies=latencies)
 
         return total_loss
 
@@ -155,7 +233,9 @@ class FitParentClass(nn.Module):
             train_loader: torch.utils.data.DataLoader,
             wandb_config: dict = None,
             val_loader: torch.utils.data.DataLoader = None,
-            loss_weights: LossWeights = None) -> None:
+            loss_weights: LossWeights = None,
+            early_stopping: int = 10,
+            save_best: str = None) -> None:
         """
         Training loop that works for specified number of epochs.
         It validates model on validation dataloader, if it is specified.
@@ -168,6 +248,8 @@ class FitParentClass(nn.Module):
         :param val_loader: Specifies the dataloader to iterate on in validation mode.
         :param loss_weights: Loss weights used to scale objectness, localization and classification losses.
                              If None, weights are computed automatically via auto_weights() each batch.
+        :param early_stopping: Specifies the number of epochs to stop after, if the val loss does not improve.
+        :param save_best: Specifies path to save the best model.
         :return: None.
         """
         wandb_config = wandb_config or {}
@@ -180,32 +262,58 @@ class FitParentClass(nn.Module):
             for k in loss_weights.__dict__.keys():
                 wandb_config["initial " + k + " weight"] = loss_weights.__dict__[k]
 
+        num_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_size = calculate_models_size(self)
+        sample_input, _ = next(iter(train_loader))
+        sample_input = sample_input[:1].to(
+            device=next(self.parameters()).device,
+            dtype=self.dtype
+            )
+        flops = FlopCountAnalysis(self, sample_input).total()
+
         wandb_config["max epochs"] = epochs
         wandb_config["optimizer"] = optimizer
         wandb_config["train_loader length (num batches)"] = len(train_loader)
         wandb_config["val_loader length (num batches)"] = len(val_loader)
+        wandb_config["Number of trainable parameters"] = num_trainable
+        wandb_config["Model size [MB]"] = f"{model_size / 8e6:.2f}"
 
+        wandb_config["FLOPs"] = flops
         wandb.init(
             project="SCNN",
             config=wandb_config
         )
         device = next(self.parameters()).device
-        early_stopping = EarlyStopping(patience=5)
-        save_best = SaveBest()
+        early_stopping = EarlyStopping(patience=early_stopping)
+        save_best = SaveBest(path=save_best)
         callbacks = [early_stopping, save_best]
+        logger.info(f"Starting Model Training")
+        logger.info(f"Max epochs == {epochs}")
+        logger.info(f"Number of trainable parameters == {num_trainable}")
+        logger.info(f"Model size [MB] is {model_size / 8e6:.2f}")
+        logger.info(f"Model FLOPs == {flops}")
+        logger.info(f"Train dataset len == {len(train_loader)}")
+        logger.info(f"Validation dataset len == {len(val_loader)}")
+        logger.info(f"Optimizer == {optimizer}")
+        logger.info(f"Device == {device}")
+        logger.info(f"Loss Weights == {loss_weights}")
+        logger.info(f"Early stopping patience == {early_stopping}")
+        logger.info(f"Saving best model to == {save_best}")
         for epoch in range(epochs):
+            logger.info(f"Epoch {epoch + 1}/{epochs}")
             self.train()
             loss = self._train(dataloader=train_loader,
                                optimizer=optimizer,
                                device=device,
                                loss_weights=loss_weights)
 
-            print(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
+            if val_loader is None:
+                logger.info(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}")
             if val_loader is not None:
                 self.eval()
                 val_loss = self._validate(validation_dataloader=val_loader,
                                           device=device)
-                print(f"Epoch {epoch + 1}/{epochs}, Val Total Loss: {val_loss}")
+                logger.info(f"Epoch {epoch + 1}/{epochs}, Train Total Loss: {loss}, Val Total Loss: {val_loss}")
                 for callback in callbacks:
                     callback(model=self,
                              epoch=epoch + 1,
