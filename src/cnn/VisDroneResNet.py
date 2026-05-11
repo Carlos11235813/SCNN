@@ -6,7 +6,11 @@ from src.cnn.FitParentClass import FitParentClass
 logger = logging.getLogger(__name__)
 
 class ResBlock(nn.Module):
-    # A simple residual block with two convolutional layers and a skip connection
+    """
+    A residual block with two convolutional layers and a skip connection
+
+    :param channels: Number of channels in the first convolutional layer.
+    """
     def __init__(self, channels: int):
         super().__init__()
         self.conv = nn.Sequential(
@@ -22,7 +26,13 @@ class ResBlock(nn.Module):
         return self.relu(x + self.conv(x))
 
 class SPPF(nn.Module):
-    # Spatial Pyramid Pooling - Fast (SPPF) module for multi-scale feature extraction
+    """
+    Spatial Pyramid Pooling - Fast (SPPF) module for multiscale feature extraction
+
+    :param channels: Number of channels in the first convolutional layer.
+    :param out_channels: Number of output channels.
+    :param k: Kernel size and padding size in MaxPool.
+    """
     def __init__(self, in_channels: int, out_channels: int, k: int = 5):
         super().__init__()
         c_ = in_channels // 2
@@ -37,13 +47,24 @@ class SPPF(nn.Module):
         return self.cv2(torch.cat((x, y1, y2, self.m(y2)), 1))
 
 class VisDroneResNet(FitParentClass):
-    # A ResNet-based architecture for VisDrone object detection
-    def __init__(self, num_classes: int = 10, boxes_per_cell: int = 1, dtype=torch.float32, in_channels: int = 3):
+    """
+    A ResNet-based architecture for VisDrone object detection.
+
+    :param in_channels: Number of channels in the input image.
+    :param boxes_per_cell: Number of boxes that model outputs per cell.
+    :param dtype: Data type that model will use.
+    :param num_classes: Number of classes in classification task.
+    """
+    def __init__(self,
+                 num_classes: int = 10,
+                 boxes_per_cell: int = 1,
+                 dtype=torch.float32,
+                 in_channels: int = 3):
         logger.info(f"VisDroneResNet object initialization")
         super().__init__()
         # Number of output channels per grid cell: 1 (obj) + 4 (bbox) + 10 (classes) = 15
         self.out_channels_per_cell = (1 + 4)*boxes_per_cell + num_classes
-        
+        self.dtype = dtype
         # Backbone: grid reduction by 8 times
         self.model = nn.Sequential(
             # Input: [Batch, 3, H, W]
