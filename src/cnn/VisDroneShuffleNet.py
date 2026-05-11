@@ -6,7 +6,12 @@ from src.cnn.FitParentClass import FitParentClass
 logger = logging.getLogger(__name__)
 
 class DecoupledHead(nn.Module):
-    # A decoupled head for separate classification and regression paths
+    """
+    A decoupled head for separate classification and regression paths
+
+    :param in_channels: Number of channels in the input image.
+    :param num_classes: Number of classes in the classification task.
+    """
     def __init__(self, in_channels: int, num_classes: int=10):
         super().__init__()
         # Combined preprocessing for better feature extraction
@@ -103,11 +108,22 @@ class ShuffleUnit(nn.Module):
         return channel_shuffle(out, 2)
 
 class VisDroneShuffleNet(FitParentClass):
-    # A ShuffleNet-based architecture for VisDrone object detection
-    def __init__(self, num_classes=10, boxes_per_cell: int = 1, dtype=torch.float32, in_channels: int = 3):
+    """
+    A ShuffleNet-based architecture for VisDrone object detection.
+
+    :param in_channels: Number of channels in the input image.
+    :param num_classes: Number of classes in the classification task.
+    :param dtype: Data type of the model. Default: torch.float32
+    :param boxes_per_cell: Number of boxes that model outputs per cell.
+    """
+    def __init__(self,
+                 num_classes=10,
+                 boxes_per_cell: int = 1,
+                 dtype=torch.float32,
+                 in_channels: int = 3):
         logger.info(f"VisDroneShuffleNet object initialization")
         super().__init__()
-
+        self.dtype = dtype
         self.out_channels_per_cell = (1 + 4) * boxes_per_cell + num_classes
 
         self.stem = nn.Sequential(
@@ -126,7 +142,7 @@ class VisDroneShuffleNet(FitParentClass):
         
         # Detection head
         self.head = DecoupledHead(232, num_classes)
-
+        self.to(dtype=self.dtype)
     def forward(self, x):
         x = self.stem(x)
         x = self.stage1(x)
