@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import logging
-
 from src.cnn.FitParentClass import FitParentClass
 
 logger = logging.getLogger(__name__)
