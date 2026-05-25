@@ -9,11 +9,12 @@ from torchvision import transforms
 logger = logging.getLogger(__name__)
 
 class VisDrone(Dataset):
-    def __init__(self, data_dir: str, labels_dir: str, transform=None):
+    def __init__(self, data_dir: str, labels_dir: str, transform=None, dtype=torch.float32):
         logger.info(f"Loading VisDrone dataset from {data_dir}")
         super().__init__()
         self.data_dir = Path(data_dir)
         self.labels_dir = Path(labels_dir)
+        self.dtype = dtype
         self.data = sorted(self.data_dir.glob('*.jpg'))
         tra = transforms.Compose(
             [
@@ -37,7 +38,7 @@ class VisDrone(Dataset):
         label_path = self.labels_dir / img_path.with_suffix(".txt").name
 
         image = Image.open(img_path).convert("RGB")
-        image = self.transform(image)
+        image = self.transform(image).to(dtype=self.dtype)
         boxes = []
         labels = []
         with open(label_path, "r", encoding="utf-8") as f:
@@ -50,7 +51,7 @@ class VisDrone(Dataset):
                 labels.append(int(lab))
 
         yolo = Yolo(
-            boxes=torch.tensor(boxes, dtype=torch.float32),
+            boxes=torch.tensor(boxes, dtype=self.dtype),
             labels=torch.tensor(labels, dtype=torch.long),
         )
         return image, yolo

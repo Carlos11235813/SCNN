@@ -69,6 +69,12 @@ def parse_args():
                         type=float,
                         default=1e-3,
                         help="Learning rate for Adam optimizer (default: 1e-3)")
+    parser.add_argument("--dtype",
+                        type=str,
+                        default="float32",
+                        choices=["bfloat16" ,"float16", "float32", "float64"],
+                        help="Tensor dtype used during training"
+                        )
 
     return parser.parse_args()
 
@@ -83,6 +89,15 @@ def main():
     validate_path(args.val_data, "val-data")
     validate_path(args.val_labels, "val-labels")
 
+    dtype_map = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+        "float64": torch.float64
+        }
+
+    dtype = dtype_map[args.dtype]
+
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize(tuple(args.resize))
@@ -90,7 +105,8 @@ def main():
 
     visdrone = VisDrone(data_dir=args.train_data,
                         labels_dir=args.train_labels,
-                        transform=transform)
+                        transform=transform,
+                        dtype=dtype)
     dataset = torch.utils.data.DataLoader(visdrone,
                                           batch_size=args.batch_size,
                                           shuffle=True,
@@ -101,7 +117,8 @@ def main():
 
     visdrone_val = VisDrone(data_dir=args.val_data,
                             labels_dir=args.val_labels,
-                            transform=transform)
+                            transform=transform,
+                            dtype=dtype)
     dataset_val = torch.utils.data.DataLoader(visdrone_val,
                                               batch_size=args.batch_size,
                                               shuffle=False,
@@ -114,8 +131,9 @@ def main():
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info(f"Using device: {device}")
+    logger.info(f"Using dtype: {args.dtype}")
 
-    cnn = VisDroneCNN(B_boxes=1, C=10)
+    cnn = VisDroneCNN(B_boxes=1, C=10, dtype=dtype)
     cnn = cnn.to(device)
     opt = torch.optim.Adam(cnn.parameters(), lr=args.lr)
 

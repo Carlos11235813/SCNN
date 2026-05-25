@@ -60,8 +60,14 @@ class WandbLogger:
         out = classify_out.cpu().detach()
         tar = classify_tar.cpu().detach()
 
+        if out.dtype == torch.bfloat16:
+            out = out.float()
+        if tar.dtype == torch.bfloat16:
+            tar = tar.float()
+
         out = (torch.sigmoid(out) > 0.5).numpy().astype(int)
         tar = tar.numpy().astype(int)
+
         precision = precision_score(out, tar, average='macro', zero_division=0)
         recall = recall_score(out, tar, average='macro', zero_division=0)
         f1 = f1_score(out, tar, average='macro', zero_division=0)
