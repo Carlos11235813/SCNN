@@ -1,7 +1,11 @@
 import torch
+import logging
 import torch.nn as nn
+
 from yolov5.models.yolo import DetectionModel
 from src.cnn.FitParentClass import FitParentClass
+
+logger = logging.getLogger(__name__)
 
 class VisDroneYOLO(FitParentClass):
     """
@@ -15,8 +19,8 @@ class VisDroneYOLO(FitParentClass):
 
     def __init__(self, yaml_path: str = "yolov5s.yaml", weights_path: str = "yolov5s-visdrone.pt"):
         super(VisDroneYOLO, self).__init__()
-        print(f"Budowanie architektury z pliku: {yaml_path}")
-        print(f"Ładowanie wag z pliku: {weights_path}")
+        logger.info(f"Budowanie architektury z pliku: {yaml_path}")
+        logger.info(f"Ładowanie wag z pliku: {weights_path}")
         
         # Bulding the base model using the specified YAML configuration
         self.base_model = DetectionModel(cfg=yaml_path, ch=3)
